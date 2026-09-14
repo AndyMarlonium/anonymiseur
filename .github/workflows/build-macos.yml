@@ -1,0 +1,61 @@
+# Construit automatiquement l'application macOS (Anonymiseur.app +
+# Anonymiseur_Installateur.dmg) sur une vraie machine Mac fournie
+# gratuitement par GitHub — aucun Mac ni terminal nécessaire côté
+# utilisateur, tout se passe dans le navigateur.
+#
+# Comment l'utiliser (voir aussi README.md, section "Construire sans
+# machine Mac (GitHub Actions)") :
+#   1. Mettre ce dossier "anonymiseur" dans un dépôt GitHub (public ou
+#      privé, peu importe).
+#   2. Onglet "Actions" du dépôt -> "Build macOS app" -> bouton
+#      "Run workflow".
+#   3. Attendre ~10-15 minutes (page rafraîchie automatiquement).
+#   4. Une fois le run vert (✓), cliquer dessus puis, en bas de page,
+#      télécharger l'archive "Anonymiseur-macOS" sous "Artifacts" :
+#      elle contient le dossier dist/ avec Anonymiseur.app et le .dmg.
+
+name: Build macOS app
+
+on:
+  workflow_dispatch:   # bouton "Run workflow" dans l'onglet Actions
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances Homebrew (poppler, tesseract, dylibbundler)
+        run: brew install poppler tesseract tesseract-lang dylibbundler
+
+      - name: Créer l'environnement virtuel et installer les dépendances Python
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Construire l'application (./build_macos.sh)
+        run: |
+          chmod +x build_macos.sh build_dmg.sh
+          ./build_macos.sh
+
+      - name: Créer le .dmg (./build_dmg.sh)
+        run: ./build_dmg.sh
+
+      - name: Publier le dossier dist/ comme fichier téléchargeable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Anonymiseur-macOS
+          path: dist/
+          if-no-files-found: error
