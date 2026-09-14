@@ -1,0 +1,7 @@
+# Dépendances nécessaires uniquement pour FABRIQUER l'exécutable
+# (voir README.md, section "Empaqueter en exécutable autonome").
+# Volontairement séparées de requirements.txt : PyInstaller n'est pas
+# utile à l'utilisateur final, et le mélanger avec les bibliothèques
+# d'OCR peut provoquer des conflits de résolution de dépendances chez pip.
+-r requirements.txt
+pyinstaller>=6.0.0

@@ -1,0 +1,6 @@
+# Dépendances nécessaires pour FAIRE TOURNER l'application (python app.py).
+python-docx>=1.1.0
+pdfplumber>=0.11.0
+pdf2image>=1.17.0
+pytesseract>=0.3.10
+pillow>=10.0.0
