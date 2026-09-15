@@ -97,14 +97,46 @@ cp "$TESS_BIN" "$VENDOR/tesseract/tesseract"
 cp "$PDFTOPPM_BIN" "$VENDOR/poppler/bin/pdftoppm"
 cp "$PDFINFO_BIN" "$VENDOR/poppler/bin/pdfinfo"
 
-# Copier le dossier tessdata (données de langue) via Homebrew
-TESS_PREFIX=$(brew --prefix tesseract 2>/dev/null || echo "")
-if [ -n "$TESS_PREFIX" ] && [ -d "$TESS_PREFIX/share/tessdata" ]; then
-    cp -R "$TESS_PREFIX/share/tessdata/." "$VENDOR/tesseract/tessdata/"
-    echo "tessdata copié depuis $TESS_PREFIX/share/tessdata"
+# Copier le dossier tessdata (données de langue) via Homebrew.
+#
+# Robuste plutôt qu'un seul chemin fixe : selon la version de Homebrew et
+# la façon dont tesseract-lang s'installe (parfois symlinké sous le
+# préfixe de "tesseract", parfois sous son propre préfixe "tesseract-lang",
+# parfois seulement sous le préfixe général de Homebrew), fra.traineddata
+# ne se trouve pas toujours là où on l'attendrait. On teste plusieurs
+# emplacements connus, et si aucun ne marche, une recherche complète du
+# système en dernier recours plutôt que d'échouer sans savoir pourquoi.
+echo "Recherche des données de langue tessdata (fra, osd...)..."
+TESSDATA_CANDIDATES=(
+    "$(brew --prefix tesseract 2>/dev/null)/share/tessdata"
+    "$(brew --prefix tesseract-lang 2>/dev/null)/share/tessdata"
+    "$(brew --prefix 2>/dev/null)/share/tessdata"
+    "/opt/homebrew/share/tessdata"
+    "/usr/local/share/tessdata"
+)
+TESSDATA_FOUND=""
+for dir in "${TESSDATA_CANDIDATES[@]}"; do
+    if [ -n "$dir" ] && [ -f "$dir/fra.traineddata" ]; then
+        TESSDATA_FOUND="$dir"
+        break
+    fi
+done
+
+if [ -n "$TESSDATA_FOUND" ]; then
+    cp -R "$TESSDATA_FOUND/." "$VENDOR/tesseract/tessdata/"
+    echo "tessdata copié depuis $TESSDATA_FOUND"
 else
-    echo "ATTENTION : dossier tessdata Homebrew introuvable automatiquement."
-    echo "Copiez-le manuellement dans $VENDOR/tesseract/tessdata/"
+    echo "fra.traineddata introuvable dans les emplacements Homebrew habituels."
+    echo "Recherche élargie sur tout le système (peut prendre quelques secondes)..."
+    FOUND_FILE=$(find / -name "fra.traineddata" 2>/dev/null | head -1)
+    if [ -n "$FOUND_FILE" ]; then
+        FOUND_DIR=$(dirname "$FOUND_FILE")
+        cp -R "$FOUND_DIR/." "$VENDOR/tesseract/tessdata/"
+        echo "tessdata copié depuis $FOUND_DIR (trouvé par recherche élargie)"
+    else
+        echo "ATTENTION : fra.traineddata introuvable nulle part sur le système."
+        echo "Vérifiez que 'brew install tesseract-lang' a bien réussi."
+    fi
 fi
 
 # dylibbundler : copie les .dylib dont dépendent ces binaires et corrige
