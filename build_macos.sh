@@ -110,12 +110,32 @@ fi
 # dylibbundler : copie les .dylib dont dépendent ces binaires et corrige
 # leurs chemins pour qu'ils se trouvent les uns les autres à côté d'eux,
 # sans dépendre de Homebrew installé sur la machine de l'utilisateur final.
+#
+# -s indique explicitement où chercher les bibliothèques : sur les Mac
+# Apple Silicon (M1/M2/...), Homebrew installe dans /opt/homebrew au lieu
+# de /usr/local (Intel), et dylibbundler ne fouille pas forcément cet
+# emplacement par défaut selon les versions — d'où des dépendances comme
+# libpoppler introuvables (message "can't get path for '@rpath/...'" et
+# invite interactive à saisir un chemin, qui bloque indéfiniment un build
+# automatisé sans terminal pour répondre). On couvre les deux emplacements
+# possibles (Intel et Apple Silicon) plutôt que de deviner lequel est actif.
+# < /dev/null : filet de sécurité — si malgré tout une bibliothèque reste
+# introuvable, dylibbundler échoue immédiatement (EOF sur son invite) au
+# lieu de rester bloqué à attendre une réponse qui ne viendra jamais.
+BREW_PREFIX="$(brew --prefix)"
 dylibbundler -od -b \
     -x "$VENDOR/tesseract/tesseract" \
     -x "$VENDOR/poppler/bin/pdftoppm" \
     -x "$VENDOR/poppler/bin/pdfinfo" \
     -d "$VENDOR/libs" \
-    -p "@executable_path/../libs/"
+    -p "@executable_path/../libs/" \
+    -s "$BREW_PREFIX/lib" \
+    -s "/opt/homebrew/lib" \
+    -s "/usr/local/lib" \
+    -s "$(brew --prefix poppler 2>/dev/null)/lib" \
+    -s "$(brew --prefix tesseract 2>/dev/null)/lib" \
+    -s "$(brew --prefix leptonica 2>/dev/null)/lib" \
+    < /dev/null
 
 # Modèle(s) OCR personnalisé(s), présents à côté de ce script. Copie tous
 # les .traineddata trouvés à la racine du projet (ex: mlg_archives.traineddata,
