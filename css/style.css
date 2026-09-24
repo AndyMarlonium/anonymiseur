@@ -136,7 +136,32 @@ body {
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
+  position: relative;
+  background: transparent;
+  z-index: 1;
 }
+
+/* Calque de surlignage : positionné exactement derrière le textarea, avec
+   les mêmes métriques de police/marges pour que les couleurs tombent
+   pile sous le texte affiché par le textarea (par-dessus, transparent). */
+.text-wrap { position: relative; }
+.text-backdrop {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+  color: transparent;
+  pointer-events: none;
+}
+.text-backdrop mark { color: transparent; border-radius: 2px; padding: 0; }
 
 .entity-col { display: flex; flex-direction: column; }
 .entity-col label { font-weight: bold; margin-bottom: 6px; }

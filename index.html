@@ -71,7 +71,10 @@
         <button id="btnUsePasted">Enregistrer le texte collé ci-dessous</button>
       </div>
       <p class="hint">Vous pouvez aussi coller ou taper du texte directement ci-dessous (Ctrl+V), puis cliquer sur « Enregistrer le texte collé » pour l'utiliser comme document de travail.</p>
-      <textarea id="textArea" spellcheck="false" placeholder="Le texte du document apparaîtra ici après import (ou collez/tapez-le directement)…"></textarea>
+      <div class="text-wrap">
+        <div id="textBackdrop" class="text-backdrop" aria-hidden="true"></div>
+        <textarea id="textArea" spellcheck="false" placeholder="Le texte du document apparaîtra ici après import (ou collez/tapez-le directement)…"></textarea>
+      </div>
     </div>
     <div class="entity-col">
       <label>Entités détectées</label>

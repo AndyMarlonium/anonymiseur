@@ -160,19 +160,63 @@
   // ------------------------------------------------------------------
   // Étape 2 — Détecter les entités
   // ------------------------------------------------------------------
-  $("btnDetect").addEventListener("click", () => {
+  function runDetection() {
     const text = textArea.value;
     if (!text.trim()) return;
     const entities = anonymizer.detect(text);
     currentEntities = entities.map((e) => ({ ...e, checked: true }));
     renderEntities();
     setStepState({ detect: true, anonymize: currentEntities.length > 0, exportBtn: false, save: false });
+  }
+  $("btnDetect").addEventListener("click", runDetection);
+
+  const textBackdrop = $("textBackdrop");
+
+  function renderHighlight() {
+    const text = textArea.value;
+    if (!currentEntities.length) {
+      textBackdrop.innerHTML = "";
+      return;
+    }
+    // currentEntities est déjà trié par position croissante et sans
+    // chevauchement (résolu côté anonymizer.js) — on peut donc construire
+    // le HTML en un seul passage de gauche à droite.
+    const sorted = [...currentEntities].sort((a, b) => a.start - b.start);
+    let html = "";
+    let cursor = 0;
+    for (const e of sorted) {
+      html += escapeHtml(text.slice(cursor, e.start));
+      html += `<mark class="${e.label}">${escapeHtml(text.slice(e.start, e.end))}</mark>`;
+      cursor = e.end;
+    }
+    html += escapeHtml(text.slice(cursor));
+    // Le textarea ajoute une ligne vide finale au rendu si le texte se
+    // termine par \n — un espace insécable en plus évite que le calque de
+    // fond soit légèrement plus court et désynchronise le défilement.
+    textBackdrop.innerHTML = html + "\u00A0";
+  }
+
+  textArea.addEventListener("scroll", () => {
+    textBackdrop.scrollTop = textArea.scrollTop;
+    textBackdrop.scrollLeft = textArea.scrollLeft;
+  });
+
+  // Si l'utilisateur retouche le texte à la main après une détection, le
+  // surlignage ne correspondrait plus aux bonnes positions (décalage) —
+  // on l'efface plutôt que d'afficher des couleurs au mauvais endroit ;
+  // une nouvelle détection le reconstruira correctement.
+  textArea.addEventListener("input", () => {
+    if (currentEntities.length) {
+      currentEntities = [];
+      renderEntities();
+    }
   });
 
   function renderEntities() {
     entityList.innerHTML = "";
     if (!currentEntities.length) {
       entityList.innerHTML = '<p class="muted">(aucune)</p>';
+      renderHighlight();
       return;
     }
     currentEntities.forEach((e, idx) => {
@@ -192,6 +236,7 @@
       row.appendChild(label);
       entityList.appendChild(row);
     });
+    renderHighlight();
   }
 
   function escapeHtml(s) {
@@ -358,8 +403,17 @@
   $("gazetteerCancel").addEventListener("click", () => $("gazetteerModal").classList.add("hidden"));
   $("gazetteerOk").addEventListener("click", () => {
     const val = $("gazetteerInput").value.trim();
-    if (val) gazetteer.add(val, "PERSONNE");
     $("gazetteerModal").classList.add("hidden");
+    if (!val) return;
+    gazetteer.add(val, "PERSONNE");
+    // Sans ceci, le nom ajouté n'apparaissait nulle part tant qu'on ne
+    // recliquait pas manuellement sur "Détecter les entités" — on relance
+    // donc la détection immédiatement, comme pour les autres entités.
+    if (textArea.value.trim()) {
+      runDetection();
+    } else {
+      alert(`« ${val} » ajouté. Il sera pris en compte dès qu'un document sera chargé et que vous cliquerez sur « Détecter les entités ».`);
+    }
   });
   $("gazetteerInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") $("gazetteerOk").click();
