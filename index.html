@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anonymiseur (version test navigateur)</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Anonymiseur de décisions de justice — version test navigateur</h1>
+  <p class="subtitle">
+    Fonctionne entièrement dans ce navigateur (OCR, détection, anonymisation) —
+    rien n'est envoyé à un serveur. Modèle OCR : <code>mlg_archives_v2+fra</code>.
+  </p>
+</header>
+
+<div class="banner-warning" id="firstLoadBanner">
+  ⏳ Chargement des bibliothèques et du modèle OCR (≈5 Mo) — un instant, surtout sur la première visite...
+</div>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="tab-anonymize">① Anonymiser un document</button>
+  <button class="tab-btn" data-tab="tab-restore">② Retrouver un document original</button>
+</nav>
+
+<!-- ===================== ONGLET 1 : ANONYMISER ===================== -->
+<section id="tab-anonymize" class="tab-panel active">
+
+  <div class="steps-row">
+    <div class="step-card">
+      <div class="step-num">Étape 1</div>
+      <label class="file-btn">
+        Importer…
+        <input type="file" id="fileInput" accept=".pdf,.docx,.txt" hidden>
+      </label>
+      <p class="step-caption">PDF (scanné ou natif), Word (.docx) ou texte (.txt).</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">Étape 2</div>
+      <button id="btnDetect" disabled>Détecter les entités</button>
+      <p class="step-caption">Repérer noms, dates, montants, adresses…</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">Étape 3</div>
+      <button id="btnAnonymize" disabled>Anonymiser</button>
+      <p class="step-caption">Remplacer les entités cochées par des pseudonymes.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">Étape 4</div>
+      <button id="btnExport" disabled>Télécharger (.txt)</button>
+      <p class="step-caption">Enregistrer le résultat anonymisé dans un fichier.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">Étape 5</div>
+      <button id="btnSaveLibrary" disabled>Enregistrer</button>
+      <p class="step-caption">Optionnel : garder une trace dans CE navigateur pour pouvoir retrouver les données d'origine plus tard (onglet ②).</p>
+    </div>
+  </div>
+
+  <div class="secondary-row">
+    <button id="btnAddGazetteer" class="link-btn">+ Ajouter un nom à repérer (optionnel)</button>
+    <span id="ocrProgress" class="ocr-progress"></span>
+  </div>
+
+  <div class="main-grid">
+    <div class="text-col">
+      <div class="paste-row">
+        <label for="docLabel">Aperçu du document</label>
+        <button id="btnUsePasted">Enregistrer le texte collé ci-dessous</button>
+      </div>
+      <p class="hint">Vous pouvez aussi coller ou taper du texte directement ci-dessous (Ctrl+V), puis cliquer sur « Enregistrer le texte collé » pour l'utiliser comme document de travail.</p>
+      <textarea id="textArea" spellcheck="false" placeholder="Le texte du document apparaîtra ici après import (ou collez/tapez-le directement)…"></textarea>
+    </div>
+    <div class="entity-col">
+      <label>Entités détectées</label>
+      <div id="entityList" class="entity-list"><p class="muted">(aucune)</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ONGLET 2 : RETROUVER ===================== -->
+<section id="tab-restore" class="tab-panel">
+  <p class="intro-bold">Retrouver les vraies données (noms, adresses…) d'un document déjà anonymisé et enregistré dans CE navigateur.</p>
+  <p class="intro-warn">⚠️ Le résultat n'est plus anonymisé — à ne jamais diffuser tel quel.</p>
+  <p class="intro-note">
+    ℹ️ Cette bibliothèque est propre à ce navigateur/cet ordinateur (stockage local,
+    <code>localStorage</code>) : elle n'est ni partagée entre testeurs, ni synchronisée
+    entre appareils, et elle est effacée si vous videz les données de navigation de ce site.
+  </p>
+
+  <p class="step-label">Étape 1 — Sélectionnez un document dans la liste :</p>
+  <table class="lib-table">
+    <thead><tr><th>Document</th><th>Enregistré le</th></tr></thead>
+    <tbody id="libraryTableBody"></tbody>
+  </table>
+  <p id="libraryStatus" class="muted"></p>
+
+  <p class="step-label">Étape 2 — Choisissez une action pour ce document :</p>
+  <div class="steps-row">
+    <div class="step-card">
+      <div class="step-num">Étape 2a</div>
+      <button id="btnLibRestore" disabled>Désanonymiser sans modifications</button>
+      <p class="step-caption">Réafficher le document avec les vraies données.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">Étape 2b</div>
+      <button id="btnLibRestoreExternal" disabled>Désanonymiser fichier traité par IA</button>
+      <p class="step-caption">Appliquer les vraies données à un fichier retravaillé ailleurs (.txt).</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">↻</div>
+      <button id="btnLibRefresh">Actualiser</button>
+      <p class="step-caption">Rafraîchir la liste.</p>
+    </div>
+  </div>
+
+  <input type="file" id="restoreFileInput" accept=".txt" hidden>
+</section>
+
+<!-- Boîte de dialogue "Ajouter un nom" -->
+<div id="gazetteerModal" class="modal hidden">
+  <div class="modal-box">
+    <h3>Ajouter un nom à repérer</h3>
+    <input type="text" id="gazetteerInput" placeholder="Nom ou texte exact à repérer">
+    <div class="modal-buttons">
+      <button id="gazetteerCancel" class="secondary">Annuler</button>
+      <button id="gazetteerOk">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">Anonymiseur — version de test web, hors ligne après premier chargement.</footer>
+
+<!-- Bibliothèques tierces (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.7.2/mammoth.browser.min.js"></script>
+
+<!-- Code du projet -->
+<script src="js/anonymizer.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

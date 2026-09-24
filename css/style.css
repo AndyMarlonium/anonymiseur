@@ -1,0 +1,200 @@
+:root {
+  --bg: #f2f2f2;
+  --panel: #ffffff;
+  --border: #cccccc;
+  --text: #222222;
+  --muted: #666666;
+  --accent: #2a5db0;
+  --danger: #d62828;
+  --entity-personne: #ffe08a;
+  --entity-adresse: #a8d5ff;
+  --entity-date: #c9c9c9;
+  --entity-montant: #ffb84d;
+  --entity-numero: #d9c2ff;
+  --entity-avocat: #b7f0c1;
+  --entity-societe: #ffc2d1;
+  --entity-telephone: #ffd6a5;
+  --entity-ville: #b0e8e0;
+  --entity-matricule: #e0e0e0;
+  --entity-propriete: #f5deb3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  padding: 14px 20px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.topbar h1 { font-size: 18px; margin: 0 0 4px; }
+.subtitle { margin: 0; color: var(--muted); font-size: 13px; }
+.subtitle code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+
+.banner-warning {
+  background: #fff3cd;
+  border-bottom: 1px solid #e0c36a;
+  color: #6b5300;
+  padding: 8px 20px;
+  font-size: 13px;
+}
+.banner-warning.hidden { display: none; }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  background: #e8e8e8;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  font-size: 14px;
+}
+.tab-btn.active { background: var(--panel); font-weight: bold; border-bottom: 2px solid var(--panel); margin-bottom: -1px; }
+
+.tab-panel { display: none; padding: 16px 20px; }
+.tab-panel.active { display: block; }
+
+.steps-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.step-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  width: 190px;
+  display: flex;
+  flex-direction: column;
+}
+.step-num { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 4px; }
+.step-caption { font-size: 11px; color: var(--muted); margin: 6px 0 0; }
+
+.step-card button, .file-btn {
+  padding: 8px 6px;
+  border: 1px solid #999;
+  border-radius: 4px;
+  background: #f0f0f0;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: center;
+  display: block;
+}
+.step-card button:disabled { color: #aaa; cursor: not-allowed; background: #f7f7f7; }
+.step-card button:not(:disabled):hover, .file-btn:hover { background: #e2e2e2; }
+.file-btn { font-weight: bold; }
+
+.secondary-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.link-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ocr-progress { font-size: 12px; color: var(--accent); }
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 14px;
+}
+.paste-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.paste-row label { font-weight: bold; }
+.paste-row button { padding: 6px 10px; border: 1px solid #999; border-radius: 4px; background: #f0f0f0; cursor: pointer; font-size: 12px; }
+.hint { font-size: 11px; color: var(--muted); margin: 4px 0 8px; }
+
+#textArea {
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.entity-col { display: flex; flex-direction: column; }
+.entity-col label { font-weight: bold; margin-bottom: 6px; }
+.entity-list {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  flex: 1;
+  overflow-y: auto;
+  max-height: 480px;
+  padding: 6px;
+}
+.entity-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 2px;
+  border-bottom: 1px solid #eee;
+  font-size: 12px;
+}
+.entity-row .swatch { width: 10px; height: 10px; border-radius: 2px; margin-top: 3px; flex-shrink: 0; }
+.entity-row .lbl { font-weight: bold; color: #555; }
+.muted { color: var(--muted); font-size: 12px; }
+
+.intro-bold { font-weight: bold; margin: 6px 0 2px; }
+.intro-warn { color: var(--danger); margin: 0 0 8px; }
+.intro-note { font-size: 12px; color: var(--muted); background: #eef2f8; border: 1px solid #cdd9ec; border-radius: 4px; padding: 8px; }
+.step-label { font-weight: bold; font-size: 13px; margin: 14px 0 6px; }
+
+.lib-table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); margin-bottom: 4px; }
+.lib-table th, .lib-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 13px; }
+.lib-table tbody tr { cursor: pointer; }
+.lib-table tbody tr:hover { background: #f3f6fb; }
+.lib-table tbody tr.selected { background: #dbe8ff; }
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; }
+.modal.hidden { display: none; }
+.modal-box { background: var(--panel); border-radius: 8px; padding: 18px; width: 420px; max-width: 90vw; }
+.modal-box h3 { margin: 0 0 10px; }
+#gazetteerInput { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 14px; }
+.modal-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.modal-buttons button { padding: 7px 14px; border-radius: 4px; border: 1px solid #999; cursor: pointer; background: #f0f0f0; }
+.modal-buttons button.secondary { background: transparent; }
+
+.footer { text-align: center; color: #aaa; font-size: 11px; padding: 14px; }
+
+mark.PERSONNE { background: var(--entity-personne); }
+mark.ADRESSE { background: var(--entity-adresse); }
+mark.DATE { background: var(--entity-date); }
+mark.MONTANT { background: var(--entity-montant); }
+mark.NUMERO { background: var(--entity-numero); }
+mark.AVOCAT { background: var(--entity-avocat); }
+mark.SOCIETE { background: var(--entity-societe); }
+mark.TELEPHONE { background: var(--entity-telephone); }
+mark.VILLE { background: var(--entity-ville); }
+mark.MATRICULE { background: var(--entity-matricule); }
+mark.PROPRIETE { background: var(--entity-propriete); }
+
+@media (max-width: 800px) {
+  .main-grid { grid-template-columns: 1fr; }
+}
