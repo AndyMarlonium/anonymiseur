@@ -21,8 +21,8 @@
 </div>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="tab-anonymize">① Anonymiser un document</button>
-  <button class="tab-btn" data-tab="tab-restore">② Retrouver un document original</button>
+  <button type="button" class="tab-btn active" data-tab="tab-anonymize">① Anonymiser un document</button>
+  <button type="button" class="tab-btn" data-tab="tab-restore">② Retrouver un document original</button>
 </nav>
 
 <!-- ===================== ONGLET 1 : ANONYMISER ===================== -->
@@ -39,28 +39,28 @@
     </div>
     <div class="step-card">
       <div class="step-num">Étape 2</div>
-      <button id="btnDetect" disabled>Détecter les entités</button>
+      <button type="button" id="btnDetect" disabled>Détecter les entités</button>
       <p class="step-caption">Repérer noms, dates, montants, adresses…</p>
     </div>
     <div class="step-card">
       <div class="step-num">Étape 3</div>
-      <button id="btnAnonymize" disabled>Anonymiser</button>
+      <button type="button" id="btnAnonymize" disabled>Anonymiser</button>
       <p class="step-caption">Remplacer les entités cochées par des pseudonymes.</p>
     </div>
     <div class="step-card">
       <div class="step-num">Étape 4</div>
-      <button id="btnExport" disabled>Télécharger (.txt)</button>
+      <button type="button" id="btnExport" disabled>Télécharger (.txt)</button>
       <p class="step-caption">Enregistrer le résultat anonymisé dans un fichier.</p>
     </div>
     <div class="step-card">
       <div class="step-num">Étape 5</div>
-      <button id="btnSaveLibrary" disabled>Enregistrer</button>
+      <button type="button" id="btnSaveLibrary" disabled>Enregistrer</button>
       <p class="step-caption">Optionnel : garder une trace dans CE navigateur pour pouvoir retrouver les données d'origine plus tard (onglet ②).</p>
     </div>
   </div>
 
   <div class="secondary-row">
-    <button id="btnAddGazetteer" class="link-btn">+ Ajouter un nom à repérer (optionnel)</button>
+    <button type="button" id="btnAddGazetteer" class="link-btn">+ Ajouter un nom à repérer (optionnel)</button>
     <span id="ocrProgress" class="ocr-progress"></span>
   </div>
 
@@ -68,7 +68,7 @@
     <div class="text-col">
       <div class="paste-row">
         <label for="docLabel">Aperçu du document</label>
-        <button id="btnUsePasted">Enregistrer le texte collé ci-dessous</button>
+        <button type="button" id="btnUsePasted">Enregistrer le texte collé ci-dessous</button>
       </div>
       <p class="hint">Vous pouvez aussi coller ou taper du texte directement ci-dessous (Ctrl+V), puis cliquer sur « Enregistrer le texte collé » pour l'utiliser comme document de travail.</p>
       <div class="text-wrap">
@@ -104,17 +104,17 @@
   <div class="steps-row">
     <div class="step-card">
       <div class="step-num">Étape 2a</div>
-      <button id="btnLibRestore" disabled>Désanonymiser sans modifications</button>
+      <button type="button" id="btnLibRestore" disabled>Désanonymiser sans modifications</button>
       <p class="step-caption">Réafficher le document avec les vraies données.</p>
     </div>
     <div class="step-card">
       <div class="step-num">Étape 2b</div>
-      <button id="btnLibRestoreExternal" disabled>Désanonymiser fichier traité par IA</button>
+      <button type="button" id="btnLibRestoreExternal" disabled>Désanonymiser fichier traité par IA</button>
       <p class="step-caption">Appliquer les vraies données à un fichier retravaillé ailleurs (.txt).</p>
     </div>
     <div class="step-card">
       <div class="step-num">↻</div>
-      <button id="btnLibRefresh">Actualiser</button>
+      <button type="button" id="btnLibRefresh">Actualiser</button>
       <p class="step-caption">Rafraîchir la liste.</p>
     </div>
   </div>
@@ -128,8 +128,8 @@
     <h3>Ajouter un nom à repérer</h3>
     <input type="text" id="gazetteerInput" placeholder="Nom ou texte exact à repérer">
     <div class="modal-buttons">
-      <button id="gazetteerCancel" class="secondary">Annuler</button>
-      <button id="gazetteerOk">Ajouter</button>
+      <button type="button" id="gazetteerCancel" class="secondary">Annuler</button>
+      <button type="button" id="gazetteerOk">Ajouter</button>
     </div>
   </div>
 </div>
