@@ -348,7 +348,11 @@
     tbody.innerHTML = "";
     selectedLibraryId = null;
     $("btnLibRestore").disabled = true;
-    $("btnLibRestoreExternal").disabled = true;
+    // btnLibRestoreExternal reste volontairement toujours actif : il sert
+    // à désanonymiser un fichier externe (retravaillé par une IA ailleurs),
+    // pas nécessairement lié à une sélection dans ce tableau — voir son
+    // gestionnaire de clic, qui demande de choisir un document seulement
+    // s'il n'y en a aucun de sélectionné au moment du clic.
     if (!lib.length) {
       $("libraryStatus").textContent = "Aucun document enregistré pour l'instant.";
       return;
@@ -364,7 +368,6 @@
         tr.classList.add("selected");
         selectedLibraryId = doc.id;
         $("btnLibRestore").disabled = false;
-        $("btnLibRestoreExternal").disabled = false;
       });
       tbody.appendChild(tr);
     });
@@ -392,7 +395,10 @@
   $("btnLibRestoreExternal").addEventListener("click", () => {
     const lib = loadLibrary();
     const doc = lib.find((d) => d.id === selectedLibraryId);
-    if (!doc) return;
+    if (!doc) {
+      alert("Sélectionnez d'abord, dans la liste ci-dessus, le document dont vous voulez utiliser la table de correspondance.");
+      return;
+    }
     if (!doc.mapping || !doc.mapping.length) {
       alert("Aucune table de correspondance trouvée pour ce document.");
       return;
