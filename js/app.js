@@ -403,16 +403,17 @@
   $("gazetteerCancel").addEventListener("click", () => $("gazetteerModal").classList.add("hidden"));
   $("gazetteerOk").addEventListener("click", () => {
     const val = $("gazetteerInput").value.trim();
+    const category = $("gazetteerCategory").value;
     $("gazetteerModal").classList.add("hidden");
     if (!val) return;
-    gazetteer.add(val, "PERSONNE");
+    gazetteer.add(val, category);
     // Sans ceci, le nom ajouté n'apparaissait nulle part tant qu'on ne
     // recliquait pas manuellement sur "Détecter les entités" — on relance
     // donc la détection immédiatement, comme pour les autres entités.
     if (textArea.value.trim()) {
       runDetection();
     } else {
-      alert(`« ${val} » ajouté. Il sera pris en compte dès qu'un document sera chargé et que vous cliquerez sur « Détecter les entités ».`);
+      alert(`« ${val} » ajouté (catégorie : ${LABEL_NAMES[category] || category}). Il sera pris en compte dès qu'un document sera chargé et que vous cliquerez sur « Détecter les entités ».`);
     }
   });
   $("gazetteerInput").addEventListener("keydown", (e) => {

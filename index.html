@@ -126,7 +126,22 @@
 <div id="gazetteerModal" class="modal hidden">
   <div class="modal-box">
     <h3>Ajouter un nom à repérer</h3>
+    <label for="gazetteerInput" class="modal-label">Nom ou texte exact à repérer :</label>
     <input type="text" id="gazetteerInput" placeholder="Nom ou texte exact à repérer">
+    <label for="gazetteerCategory" class="modal-label">Catégorie :</label>
+    <select id="gazetteerCategory">
+      <option value="PERSONNE" selected>Personne</option>
+      <option value="SOCIETE">Société</option>
+      <option value="AVOCAT">Avocat / Cabinet</option>
+      <option value="ADRESSE">Adresse</option>
+      <option value="VILLE">Ville</option>
+      <option value="DATE">Date</option>
+      <option value="TELEPHONE">Téléphone</option>
+      <option value="MONTANT">Montant</option>
+      <option value="NUMERO">Numéro (décision/procédure)</option>
+      <option value="MATRICULE">Matricule</option>
+      <option value="PROPRIETE">Propriété</option>
+    </select>
     <div class="modal-buttons">
       <button type="button" id="gazetteerCancel" class="secondary">Annuler</button>
       <button type="button" id="gazetteerOk">Ajouter</button>
