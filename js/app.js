@@ -397,24 +397,36 @@
       alert("Aucune table de correspondance trouvée pour ce document.");
       return;
     }
-    if (!confirm(
-      "Choisissez un fichier .txt retravaillé ailleurs (résumé, extrait…) contenant " +
-      `encore des pseudonymes du document « ${doc.name} » (ex : [PERSONNE_1]).\n\n` +
-      "Chaque pseudonyme reconnu sera remplacé par la vraie donnée correspondante. " +
-      "Le résultat ne sera plus anonymisé — à ne jamais diffuser tel quel.\n\nContinuer ?"
-    )) return;
+    // Pas de confirm() ici avant d'ouvrir le sélecteur de fichier : sur
+    // certains navigateurs, une boîte de dialogue bloquante intercalée
+    // peut empêcher le clic programmatique suivant sur l'input fichier de
+    // fonctionner (perte du geste utilisateur). L'avertissement reste
+    // affiché, mais après coup, dans le message final.
     $("restoreFileInput").click();
     $("restoreFileInput").onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      const modifiedText = await readTxt(file);
+      let modifiedText;
+      try {
+        modifiedText = file.name.toLowerCase().endsWith(".docx")
+          ? await readDocx(file)
+          : await readTxt(file);
+      } catch (err) {
+        console.error(err);
+        alert("Erreur de lecture du fichier : " + err.message);
+        e.target.value = "";
+        return;
+      }
       const { text: restored, count } = AnonymizerLib.restoreOriginalNames(modifiedText, doc.mapping);
       textArea.value = restored;
       document.querySelector('[data-tab="tab-anonymize"]').click();
       resetWorkflowAfterNewDocument();
       commitWorkingText();
       setStepState({ detect: true, anonymize: false, exportBtn: true, save: false });
-      alert(`⚠️ Noms restaurés dans "${file.name}" — ${count} correspondance(s) appliquée(s) sur ${doc.mapping.length} possibles. Ne pas diffuser.`);
+      alert(
+        `⚠️ Noms restaurés dans "${file.name}" — ${count} correspondance(s) appliquée(s) sur ` +
+        `${doc.mapping.length} possibles.\n\nLe résultat affiché n'est plus anonymisé — à ne jamais diffuser tel quel.`
+      );
       e.target.value = "";
     };
   });
