@@ -217,28 +217,41 @@
   }
 
   function detectEntities(text, gazetteer, patterns) {
-    let found = [];
+    let regexFound = [];
 
     for (const [label, re] of patterns) {
       re.lastIndex = 0;
       let m;
       while ((m = re.exec(text)) !== null) {
         const [start, end] = m.indices.groups.val;
-        found.push({ start, end, label, text: m.groups.val, source: "regex" });
+        regexFound.push({ start, end, label, text: m.groups.val, source: "regex" });
         if (m.index === re.lastIndex) re.lastIndex++;
       }
     }
-
-    found = found.concat(findTitlecaseNameSequences(text));
-
-    if (gazetteer) found = found.concat(gazetteer.find(text));
+    regexFound = regexFound.concat(findTitlecaseNameSequences(text));
 
     function touchesStopword(e) {
-      if (e.source === "gazetteer") return false;
       if (!["PERSONNE", "AVOCAT", "SOCIETE"].includes(e.label)) return false;
       return e.text.split(/\s+/).some((tok) => STOPWORDS_TITLECASE.has(tok));
     }
-    found = found.filter((e) => !touchesStopword(e));
+    regexFound = regexFound.filter((e) => !touchesStopword(e));
+
+    const gazetteerFound = gazetteer ? gazetteer.find(text) : [];
+
+    // Priorité absolue aux entrées du gazetteer (choix explicite de
+    // l'utilisateur, catégorie comprise) : toute correspondance automatique
+    // qui chevauche ne serait-ce que partiellement une entrée du gazetteer
+    // est écartée — même si elle est plus longue. Sans ça, une règle
+    // automatique plus large (ex : la séquence "deux mots à Casse-Titre qui
+    // se suivent") pouvait avaler un mot ajouté manuellement et lui imposer
+    // sa propre catégorie (typiquement PERSONNE) à la place de celle
+    // choisie par l'utilisateur.
+    function overlaps(a, b) {
+      return a.start < b.end && b.start < a.end;
+    }
+    regexFound = regexFound.filter((e) => !gazetteerFound.some((g) => overlaps(e, g)));
+
+    let found = regexFound.concat(gazetteerFound);
 
     found.sort((a, b) => {
       if (a.start !== b.start) return a.start - b.start;

@@ -13,6 +13,33 @@
     SOCIETE: "SOCIETE", TELEPHONE: "TELEPHONE", VILLE: "VILLE",
     MATRICULE: "MATRICULE", PROPRIETE: "PROPRIETE",
   };
+  const BUILTIN_LABELS = new Set(Object.keys(LABEL_NAMES));
+
+  // Catégories personnalisées créées par l'utilisateur : chacune reçoit
+  // une couleur prise dans cette palette (jamais deux fois la même tant
+  // qu'il en reste), au lieu de devoir éditer le CSS pour chaque nouvelle
+  // catégorie. Choisies pour rester lisibles avec du texte noir par-dessus
+  // (mêmes tons pastel que les catégories prédéfinies).
+  const CUSTOM_PALETTE = [
+    "#ffd6e0", "#c8e6c9", "#b3e5fc", "#fff9c4", "#d1c4e9",
+    "#ffccbc", "#b2dfdb", "#f0f4c3", "#e1bee7", "#c5e1a5",
+    "#ffe0b2", "#b3e0ff",
+  ];
+  const customLabelColors = new Map(); // label -> couleur
+  let customPaletteIndex = 0;
+
+  function colorForLabel(label) {
+    if (BUILTIN_LABELS.has(label)) return null; // utilise la variable CSS existante
+    if (!customLabelColors.has(label)) {
+      customLabelColors.set(label, CUSTOM_PALETTE[customPaletteIndex % CUSTOM_PALETTE.length]);
+      customPaletteIndex++;
+    }
+    return customLabelColors.get(label);
+  }
+
+  function displayNameForLabel(label) {
+    return LABEL_NAMES[label] || label;
+  }
 
   const LIBRARY_KEY = "anonymiseur_library_v1";
 
@@ -186,7 +213,7 @@
     let cursor = 0;
     for (const e of sorted) {
       html += escapeHtml(text.slice(cursor, e.start));
-      html += `<mark class="${e.label}">${escapeHtml(text.slice(e.start, e.end))}</mark>`;
+      html += `<mark class="${e.label}" style="${colorForLabel(e.label) ? `background:${colorForLabel(e.label)}` : ""}">${escapeHtml(text.slice(e.start, e.end))}</mark>`;
       cursor = e.end;
     }
     html += escapeHtml(text.slice(cursor));
@@ -228,9 +255,9 @@
       cb.addEventListener("change", () => { currentEntities[idx].checked = cb.checked; });
       const swatch = document.createElement("span");
       swatch.className = "swatch";
-      swatch.style.background = `var(--entity-${e.label.toLowerCase()}, #ccc)`;
+      swatch.style.background = colorForLabel(e.label) || `var(--entity-${e.label.toLowerCase()}, #ccc)`;
       const label = document.createElement("span");
-      label.innerHTML = `<span class="lbl">[${LABEL_NAMES[e.label] || e.label}]</span> ${escapeHtml(e.text)}`;
+      label.innerHTML = `<span class="lbl">[${escapeHtml(displayNameForLabel(e.label))}]</span> ${escapeHtml(e.text)}`;
       row.appendChild(cb);
       row.appendChild(swatch);
       row.appendChild(label);
@@ -397,13 +424,36 @@
   // ------------------------------------------------------------------
   $("btnAddGazetteer").addEventListener("click", () => {
     $("gazetteerInput").value = "";
+    $("gazetteerCategory").value = "PERSONNE";
+    $("gazetteerNewCategory").value = "";
+    $("gazetteerNewCategory").style.display = "none";
     $("gazetteerModal").classList.remove("hidden");
     $("gazetteerInput").focus();
+  });
+  $("gazetteerCategory").addEventListener("change", () => {
+    const isNew = $("gazetteerCategory").value === "__new__";
+    $("gazetteerNewCategory").style.display = isNew ? "block" : "none";
+    if (isNew) $("gazetteerNewCategory").focus();
   });
   $("gazetteerCancel").addEventListener("click", () => $("gazetteerModal").classList.add("hidden"));
   $("gazetteerOk").addEventListener("click", () => {
     const val = $("gazetteerInput").value.trim();
-    const category = $("gazetteerCategory").value;
+    let category = $("gazetteerCategory").value;
+    if (category === "__new__") {
+      const newName = $("gazetteerNewCategory").value.trim();
+      if (!newName) {
+        alert("Donnez un nom à la nouvelle catégorie (ou choisissez-en une existante).");
+        return;
+      }
+      // Normalisé (majuscules, espaces -> underscores) : c'est ce nom
+      // interne qui sert à la fois de classe CSS et de préfixe de
+      // pseudonyme (ex : [TEMOIN_1]) — le nom tel que tapé reste affiché
+      // tel quel dans la colonne des entités.
+      category = newName.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      if (!category) category = "PERSONNALISE";
+      LABEL_NAMES[category] = newName;
+    }
     $("gazetteerModal").classList.add("hidden");
     if (!val) return;
     gazetteer.add(val, category);
