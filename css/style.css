@@ -197,23 +197,49 @@ body {
 .lib-table tbody tr:hover { background: #f3f6fb; }
 .lib-table tbody tr.selected { background: #dbe8ff; }
 
-.modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
 .modal.hidden { display: none; }
-.modal-box { background: var(--panel); border-radius: 8px; padding: 18px; width: 420px; max-width: 90vw; }
-.modal-box h3 { margin: 0 0 10px; }
-#gazetteerInput { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 14px; }
-.modal-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.modal-box {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.3);
+  padding: 20px;
+  width: 420px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  box-sizing: border-box;
+}
+.modal-box h3 { margin: 0 0 12px; }
+#gazetteerInput { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 14px; }
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 4px;
+}
 .modal-buttons button {
-  padding: 7px 16px;
+  padding: 8px 18px;
   border-radius: 4px;
   border: 1px solid var(--accent);
   cursor: pointer;
   background: var(--accent);
   color: #fff;
   font-weight: bold;
+  font-size: 13px;
 }
 .modal-buttons button:hover { background: #1e4a8f; }
-.modal-buttons button.secondary { background: transparent; color: var(--text); border-color: #999; font-weight: normal; }
+.modal-buttons button.secondary { background: #ffffff; color: var(--text); border-color: #999; font-weight: normal; }
 .modal-buttons button.secondary:hover { background: #eee; }
 
 .footer { text-align: center; color: #aaa; font-size: 11px; padding: 14px; }
