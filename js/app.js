@@ -1,8 +1,14 @@
 // Anonymiseur — version web de test. Toute la logique tourne dans le
 // navigateur (OCR via Tesseract.js + modèle personnalisé, lecture PDF via
 // pdf.js, lecture .docx via mammoth.js, anonymisation via anonymizer.js).
-// Aucune donnée n'est envoyée à un serveur : la "bibliothèque" (onglet ②)
-// est stockée dans localStorage, propre à ce navigateur.
+// Aucune donnée n'est envoyée à un serveur.
+//
+// Flux en une seule page, sans onglet : mode "Anonymiser" -> l'utilisateur
+// copie le texte anonymisé (presse-papiers) et le colle dans une IA
+// externe -> mode "Désanonymiser" -> l'utilisateur colle le résultat de
+// l'IA et récupère les vraies données, grâce à la table de correspondance
+// gardée en mémoire pour le document en cours (pas de bibliothèque
+// persistante : tout se passe dans la même session).
 
 (function () {
   "use strict";
@@ -41,8 +47,6 @@
     return LABEL_NAMES[label] || label;
   }
 
-  const LIBRARY_KEY = "anonymiseur_library_v1";
-
   let gazetteer = new AnonymizerLib.Gazetteer();
   let anonymizer = new AnonymizerLib.Anonymizer(gazetteer);
   let currentEntities = []; // [{...entity, checked: bool}]
@@ -54,17 +58,30 @@
   const ocrProgress = $("ocrProgress");
 
   // ------------------------------------------------------------------
-  // Onglets
+  // Mode de la page : "anonymize" (par défaut) ou "desanonymize" — une
+  // seule page, pas d'onglets ; le libellé "Anonymiser"/"Désanonymiser"
+  // s'affiche en grand pour indiquer clairement dans quel mode on se
+  // trouve.
   // ------------------------------------------------------------------
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      $(btn.dataset.tab).classList.add("active");
-      if (btn.dataset.tab === "tab-restore") refreshLibraryTable();
-    });
-  });
+  let mode = "anonymize";
+
+  function setMode(newMode) {
+    mode = newMode;
+    const isAnonymize = mode === "anonymize";
+    $("modeLabel").textContent = isAnonymize ? "Anonymiser" : "Désanonymiser";
+    $("modeLabel").classList.toggle("mode-label-desanonymize", !isAnonymize);
+    $("modeHint").textContent = isAnonymize
+      ? "Importez un document : les informations personnelles (noms, dates, adresses…) sont repérées automatiquement."
+      : "Collez ici le texte renvoyé par votre IA externe, puis cliquez sur « Désanonymiser » pour rétablir les vraies données.";
+    $("anonymizeSteps").classList.toggle("hidden", !isAnonymize);
+    $("desanonymizeSteps").classList.toggle("hidden", isAnonymize);
+    $("entityCol").classList.toggle("hidden", !isAnonymize);
+    $("textAreaHint").classList.toggle("hidden", !isAnonymize);
+    $("textAreaLabel").textContent = isAnonymize ? "Aperçu du document" : "Texte reçu de l'IA";
+    textArea.placeholder = isAnonymize
+      ? "Le texte du document apparaîtra ici après import (ou collez/tapez-le directement)…"
+      : "Collez ici (Ctrl+V) le texte renvoyé par l'IA…";
+  }
 
   // ------------------------------------------------------------------
   // OCR — chargement paresseux du worker Tesseract.js (une seule fois),
@@ -131,14 +148,14 @@
   }
 
   // ------------------------------------------------------------------
-  // Étape 1 — Importer
+  // Étape 1 — Importer et détecter les entités
   // ------------------------------------------------------------------
   $("fileInput").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
     textArea.value = "";
-    resetWorkflowAfterNewDocument();
+    resetAll();
     try {
       let text;
       if (ext === "pdf") {
@@ -150,10 +167,10 @@
         text = await readTxt(file);
       }
       textArea.value = text;
-      commitWorkingText();
-      // La détection des entités se lance désormais automatiquement dès
-      // l'import — l'utilisateur n'a plus besoin de cliquer sur un bouton
-      // séparé "Détecter les entités" avant de pouvoir anonymiser.
+      $("btnDetect").disabled = false;
+      // La détection des entités se lance automatiquement dès l'import —
+      // pas besoin de cliquer sur un bouton séparé avant de pouvoir
+      // anonymiser.
       runDetection();
     } catch (err) {
       console.error(err);
@@ -163,60 +180,27 @@
     e.target.value = ""; // permet de réimporter le même fichier ensuite
   });
 
-  // ------------------------------------------------------------------
-  // Coller / saisir directement
-  // ------------------------------------------------------------------
-  $("btnUsePasted").addEventListener("click", () => {
-    if (!textArea.value.trim()) {
-      alert("Le champ est vide — collez ou saisissez du texte avant d'enregistrer.");
-      return;
-    }
-    resetWorkflowAfterNewDocument();
-    commitWorkingText();
-    // Enregistré directement dans la bibliothèque de ce navigateur (même
-    // bibliothèque que l'onglet ② Désanonymiser), sans boîte de dialogue
-    // "Enregistrer sous" ni téléchargement — un seul clic, sans interruption.
-    const lib = loadLibrary();
-    lib.push({
-      id: Date.now().toString(36),
-      name: "Texte collé " + new Date().toLocaleString("fr-FR"),
-      date: new Date().toISOString(),
-      originalText: textArea.value,
-      anonymizedText: textArea.value,
-      mapping: [],
-    });
-    saveLibrary(lib);
-    // Idem que pour un import de fichier : détection automatique, pour
-    // enchaîner directement sur "Anonymiser" sans étape supplémentaire.
-    runDetection();
-    alert("Le texte est bien enregistré, vous pouvez continuer directement à l'étape « Anonymiser ».");
-  });
-
-  function resetWorkflowAfterNewDocument() {
+  // Remet tout à zéro (nouveau document à anonymiser) : ré-affiche le mode
+  // "Anonymiser", vide le texte et les entités, désactive tous les
+  // boutons qui doivent l'être à ce stade.
+  function resetAll() {
     anonymizer = new AnonymizerLib.Anonymizer(gazetteer);
     currentEntities = [];
-    currentDocSaved = false;
+    textArea.value = "";
     renderEntities();
-    setStepState({ detect: false, anonymize: false, exportBtn: false });
+    setMode("anonymize");
+    $("btnDetect").disabled = true;
+    $("btnAnonymize").disabled = true;
+    $("btnDesanonymize").disabled = true;
+    $("btnExport").disabled = true;
+    $("btnExportDocx").disabled = true;
   }
-
-  function commitWorkingText() {
-    setStepState({ detect: true, anonymize: false, exportBtn: false });
-  }
-
-  function setStepState({ detect, anonymize, exportBtn }) {
-    // "detect" sert désormais uniquement au bouton secondaire "Redétecter"
-    // (la détection initiale se déclenche automatiquement après import).
-    $("btnDetect").disabled = !detect;
-    $("btnAnonymize").disabled = !anonymize;
-    $("btnExport").disabled = !exportBtn;
-    $("btnExportDocx").disabled = !exportBtn;
-  }
+  $("btnNewDocument").addEventListener("click", resetAll);
 
   // ------------------------------------------------------------------
-  // Détection des entités — automatique dès qu'un document est chargé
-  // (import ou texte collé) ; le bouton "Redétecter" permet de relancer
-  // manuellement après une modification du texte.
+  // Détection des entités — automatique dès qu'un document est importé ;
+  // le bouton "Redétecter" permet de relancer manuellement après une
+  // modification du texte (import ou texte collé/tapé directement).
   // ------------------------------------------------------------------
   function runDetection() {
     const text = textArea.value;
@@ -224,7 +208,7 @@
     const entities = anonymizer.detect(text);
     currentEntities = entities.map((e) => ({ ...e, checked: true }));
     renderEntities();
-    setStepState({ detect: true, anonymize: currentEntities.length > 0, exportBtn: false });
+    $("btnAnonymize").disabled = currentEntities.length === 0;
   }
   $("btnDetect").addEventListener("click", runDetection);
 
@@ -257,7 +241,7 @@
     // Le textarea ajoute une ligne vide finale au rendu si le texte se
     // termine par \n — un espace insécable en plus évite que le calque de
     // fond soit légèrement plus court et désynchronise le défilement.
-    textBackdrop.innerHTML = html + "\u00A0";
+    textBackdrop.innerHTML = html + " ";
   }
 
   textArea.addEventListener("scroll", () => {
@@ -265,14 +249,21 @@
     textBackdrop.scrollLeft = textArea.scrollLeft;
   });
 
-  // Si l'utilisateur retouche le texte à la main après une détection, le
-  // surlignage ne correspondrait plus aux bonnes positions (décalage) —
-  // on l'efface plutôt que d'afficher des couleurs au mauvais endroit ;
-  // une nouvelle détection le reconstruira correctement.
+  // Si l'utilisateur retouche le texte à la main, le surlignage ne
+  // correspondrait plus aux bonnes positions (décalage) — on l'efface
+  // plutôt que d'afficher des couleurs au mauvais endroit ; une nouvelle
+  // détection le reconstruira correctement. On active/désactive aussi les
+  // boutons pertinents selon le mode en cours et la présence de texte.
   textArea.addEventListener("input", () => {
-    if (currentEntities.length) {
-      currentEntities = [];
-      renderEntities();
+    if (mode === "anonymize") {
+      if (currentEntities.length) {
+        currentEntities = [];
+        renderEntities();
+      }
+      $("btnDetect").disabled = !textArea.value.trim();
+      $("btnAnonymize").disabled = true;
+    } else {
+      $("btnDesanonymize").disabled = !textArea.value.trim();
     }
   });
 
@@ -331,62 +322,94 @@
   }
 
   // ------------------------------------------------------------------
-  // Étape 3 — Anonymiser
+  // Copie dans le presse-papiers, avec repli si l'API Clipboard moderne
+  // n'est pas disponible (contexte non sécurisé, permission refusée…).
   // ------------------------------------------------------------------
-  let lastAnonymizedText = "";
-  let lastOriginalText = "";
-  // Nom donné par l'utilisateur au moment d'"Enregistrer et télécharger" —
-  // réutilisé comme suggestion pour le nom du fichier téléchargé, avec
-  // "-anonymisé" ajouté à la fin.
-  let lastSavedDocName = "";
-  // Devient vrai dès qu'une entrée a été créée dans la bibliothèque pour le
-  // texte anonymisé courant — évite de redemander le nom et de dupliquer
-  // l'entrée si l'utilisateur clique successivement sur .docx PUIS .txt
-  // (ou l'inverse) pour le même document.
-  let currentDocSaved = false;
+  async function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }
 
-  $("btnAnonymize").addEventListener("click", () => {
+  // ------------------------------------------------------------------
+  // Étape 2 — Anonymiser et copier : anonymise, copie le résultat dans le
+  // presse-papiers, vide le champ (pour signaler que c'est bien copié) et
+  // passe en mode "Désanonymiser". La table de correspondance reste en
+  // mémoire (dans l'instance Anonymizer) pour l'étape 3.
+  // ------------------------------------------------------------------
+  $("btnAnonymize").addEventListener("click", async () => {
     const text = textArea.value;
     const checked = currentEntities.filter((e) => e.checked);
-    lastOriginalText = text;
     const result = anonymizer.anonymize(text, checked);
-    lastAnonymizedText = result;
-    textArea.value = result;
     currentEntities = [];
-    currentDocSaved = false;
     renderEntities();
-    // "Enregistrer et télécharger" (étape 3) se débloque directement — le
-    // nom ne sera demandé qu'une fois, au premier clic sur l'un des deux
-    // boutons (.docx ou .txt).
-    setStepState({ detect: true, anonymize: false, exportBtn: true });
+
+    const copied = await copyToClipboard(result);
+
+    textArea.value = "";
+    setMode("desanonymize");
+    $("btnDesanonymize").disabled = true;
+    $("btnExport").disabled = true;
+    $("btnExportDocx").disabled = true;
+
+    if (copied) {
+      alert(
+        "Texte anonymisé copié !\n\nCollez-le dans votre IA externe, récupérez le résultat, " +
+        "puis collez-le ici pour le désanonymiser."
+      );
+    } else {
+      // Très rare (permissions du navigateur) : on remet le texte affiché
+      // pour que rien ne soit perdu, plutôt que de vider le champ pour
+      // rien.
+      textArea.value = result;
+      alert(
+        "Impossible de copier automatiquement dans le presse-papiers — le texte anonymisé " +
+        "est affiché ci-dessous : sélectionnez-le et copiez-le manuellement (Ctrl+C)."
+      );
+    }
   });
 
   // ------------------------------------------------------------------
-  // Étape 3 — Enregistrer (bibliothèque locale) ET télécharger, en une
-  // seule action : le nom n'est demandé qu'une fois, quel que soit le
-  // bouton (.docx / .txt) cliqué en premier.
+  // Étape 3 — Désanonymiser : remet les vraies données à la place des
+  // pseudonymes, dans le texte collé depuis l'IA externe.
   // ------------------------------------------------------------------
-  async function ensureSavedToLibrary() {
-    if (currentDocSaved) return true;
-    const name = prompt(
-      "Nom du document, pour le retrouver facilement dans l'onglet ② Désanonymiser :",
-      "Document " + new Date().toLocaleString("fr-FR")
+  $("btnDesanonymize").addEventListener("click", () => {
+    const text = textArea.value;
+    if (!text.trim()) return;
+    const pairs = anonymizer.mappingAsPairs();
+    if (!pairs.length) {
+      alert("Aucune correspondance à restaurer pour l'instant — anonymisez d'abord un document dans cette session.");
+      return;
+    }
+    const { text: restored, count } = AnonymizerLib.restoreOriginalNames(text, pairs);
+    textArea.value = restored;
+    $("btnExport").disabled = false;
+    $("btnExportDocx").disabled = false;
+    alert(
+      `⚠️ Noms restaurés — ${count} correspondance(s) appliquée(s) sur ${pairs.length} possibles.\n\n` +
+      "Le résultat affiché n'est plus anonymisé — à ne jamais diffuser tel quel."
     );
-    if (!name) return false;
-    lastSavedDocName = name;
-    const lib = loadLibrary();
-    lib.push({
-      id: Date.now().toString(36),
-      name,
-      date: new Date().toISOString(),
-      originalText: lastOriginalText,
-      anonymizedText: lastAnonymizedText || textArea.value,
-      mapping: anonymizer.mappingAsPairs(),
-    });
-    saveLibrary(lib);
-    currentDocSaved = true;
-    return true;
-  }
+  });
 
   function downloadBlobAsFile(content, filename, mimeType) {
     const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
@@ -400,17 +423,12 @@
     URL.revokeObjectURL(url);
   }
 
-  function downloadTextFile(content, filename) {
-    downloadBlobAsFile(content, filename, "text/plain;charset=utf-8");
-  }
-
   // ------------------------------------------------------------------
-  // Étape 5 — Télécharger : l'utilisateur choisit l'emplacement, avec un
-  // nom suggéré basé sur celui donné à l'étape 4 ("<nom>-anonymisé.txt" ou
-  // ".docx"). Repose sur la File System Access API (Chrome/Edge) pour un
-  // vrai choix d'emplacement ; sur les navigateurs qui ne la supportent
-  // pas (Firefox, Safari), on retombe sur un téléchargement classique
-  // avec le même nom suggéré, dans le dossier de téléchargement par défaut.
+  // Télécharger le document final (désanonymisé) : l'utilisateur choisit
+  // l'emplacement et peut renommer le fichier directement dans la boîte
+  // de dialogue d'enregistrement (File System Access API sur Chrome/
+  // Edge) ; repli en téléchargement classique sur les navigateurs qui ne
+  // la supportent pas (Firefox, Safari).
   // ------------------------------------------------------------------
   async function saveAsFile(content, suggestedName, mimeType, extension) {
     if (window.showSaveFilePicker) {
@@ -434,18 +452,14 @@
   }
 
   $("btnExport").addEventListener("click", async () => {
-    if (!(await ensureSavedToLibrary())) return;
-    const base = (lastSavedDocName || "document").trim();
-    await saveAsFile(textArea.value, `${base}-anonymisé.txt`, "text/plain;charset=utf-8", ".txt");
+    await saveAsFile(textArea.value, "document-desanonymise.txt", "text/plain;charset=utf-8", ".txt");
   });
 
   $("btnExportDocx").addEventListener("click", async () => {
-    if (!(await ensureSavedToLibrary())) return;
-    const base = (lastSavedDocName || "document").trim();
     try {
       const blob = await buildDocx(textArea.value);
       await saveAsFile(
-        blob, `${base}-anonymisé.docx`,
+        blob, "document-desanonymise.docx",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"
       );
     } catch (err) {
@@ -499,145 +513,6 @@
     });
   }
 
-  function loadLibrary() {
-    try {
-      return JSON.parse(localStorage.getItem(LIBRARY_KEY) || "[]");
-    } catch (e) {
-      return [];
-    }
-  }
-  function saveLibrary(lib) {
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(lib));
-  }
-
-  // ------------------------------------------------------------------
-  // Onglet ② — Retrouver un document original
-  // ------------------------------------------------------------------
-  let selectedLibraryId = null;
-  // Armé par le OK de la boîte "Désanonymiser un fichier traité par IA" :
-  // le PROCHAIN clic sur une ligne de la liste ci-dessous ouvre alors
-  // directement le sélecteur de fichier pour ce document, sans étape
-  // intermédiaire.
-  let awaitingRestoreFileSelection = false;
-
-  function refreshLibraryTable() {
-    const lib = loadLibrary();
-    const tbody = $("libraryTableBody");
-    tbody.innerHTML = "";
-    selectedLibraryId = null;
-    $("btnLibRestore").disabled = true;
-    // btnLibRestoreExternal reste volontairement toujours actif : il
-    // affiche d'abord une explication (boîte de dialogue), puis attend
-    // le prochain clic sur une ligne de cette liste pour ouvrir le
-    // sélecteur de fichier — voir awaitingRestoreFileSelection plus bas.
-    if (!lib.length) {
-      $("libraryStatus").textContent = "Aucun document enregistré pour l'instant.";
-      return;
-    }
-    $("libraryStatus").textContent = `${lib.length} document(s).`;
-    lib.slice().reverse().forEach((doc) => {
-      const tr = document.createElement("tr");
-      tr.dataset.id = doc.id;
-      const dateDisplay = new Date(doc.date).toLocaleString("fr-FR");
-      tr.innerHTML = `<td>${escapeHtml(doc.name)}</td><td>${dateDisplay}</td>`;
-      tr.addEventListener("click", () => {
-        document.querySelectorAll(".lib-table tbody tr").forEach((r) => r.classList.remove("selected"));
-        tr.classList.add("selected");
-        selectedLibraryId = doc.id;
-        $("btnLibRestore").disabled = false;
-        if (awaitingRestoreFileSelection) {
-          awaitingRestoreFileSelection = false;
-          openExternalRestorePicker(doc);
-        }
-      });
-      tbody.appendChild(tr);
-    });
-  }
-
-  $("btnLibRefresh").addEventListener("click", refreshLibraryTable);
-
-  $("btnLibRestore").addEventListener("click", () => {
-    const lib = loadLibrary();
-    const doc = lib.find((d) => d.id === selectedLibraryId);
-    if (!doc) return;
-    if (!confirm(
-      "Ceci va afficher le document avec les VRAIES données personnelles rétablies " +
-      "à la place des pseudonymes.\n\nLe résultat n'est plus anonymisé — à ne jamais " +
-      "diffuser tel quel.\n\nContinuer ?"
-    )) return;
-    textArea.value = doc.originalText;
-    document.querySelector('[data-tab="tab-anonymize"]').click();
-    resetWorkflowAfterNewDocument();
-    commitWorkingText();
-    lastOriginalText = doc.originalText;
-    lastAnonymizedText = doc.originalText;
-    lastSavedDocName = doc.name + " (restauré)";
-    // Un document restauré (vraies données) ne doit pas être réenregistré
-    // dans la bibliothèque des documents anonymisés — seul le
-    // téléchargement direct est proposé ici.
-    currentDocSaved = true;
-    setStepState({ detect: true, anonymize: false, exportBtn: true });
-    alert("⚠️ Version restaurée affichée dans l'onglet ① — ne pas diffuser tel quel.");
-  });
-
-  $("btnLibRestoreExternal").addEventListener("click", () => {
-    // Affiche une explication dans une boîte de dialogue "maison" (pas
-    // une fenêtre système bloquante, pour ne pas risquer de perdre le
-    // geste utilisateur nécessaire à l'ouverture du sélecteur de fichier
-    // plus tard). Un seul bouton OK : ça arme l'attente d'un choix dans
-    // la liste ci-dessous (étape 1) — voir awaitingRestoreFileSelection.
-    $("restoreExternalModal").classList.remove("hidden");
-  });
-
-  $("restoreExternalOk").addEventListener("click", () => {
-    $("restoreExternalModal").classList.add("hidden");
-    awaitingRestoreFileSelection = true;
-  });
-
-  // Une fois armée par le OK ci-dessus, le PROCHAIN clic sur une ligne de
-  // la liste (étape 1, géré dans refreshLibraryTable) ouvre directement
-  // le sélecteur de fichier pour ce document — voir openExternalRestorePicker.
-  async function openExternalRestorePicker(doc) {
-    if (!doc.mapping || !doc.mapping.length) {
-      alert("Aucune table de correspondance trouvée pour ce document.");
-      return;
-    }
-    $("restoreFileInput").click();
-    $("restoreFileInput").onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      let modifiedText;
-      try {
-        modifiedText = file.name.toLowerCase().endsWith(".docx")
-          ? await readDocx(file)
-          : await readTxt(file);
-      } catch (err) {
-        console.error(err);
-        alert("Erreur de lecture du fichier : " + err.message);
-        e.target.value = "";
-        return;
-      }
-      const { text: restored, count } = AnonymizerLib.restoreOriginalNames(modifiedText, doc.mapping);
-      textArea.value = restored;
-      document.querySelector('[data-tab="tab-anonymize"]').click();
-      resetWorkflowAfterNewDocument();
-      commitWorkingText();
-      lastOriginalText = restored;
-      lastAnonymizedText = restored;
-      lastSavedDocName = doc.name + " (restauré)";
-      // Idem : pas de réenregistrement dans la bibliothèque pour un
-      // document avec les vraies données restaurées.
-      currentDocSaved = true;
-      setStepState({ detect: true, anonymize: false, exportBtn: true });
-      alert(
-        `⚠️ Noms restaurés dans "${file.name}" — ${count} correspondance(s) appliquée(s) sur ` +
-        `${doc.mapping.length} possibles.\n\nLe résultat affiché n'est plus anonymisé — à ne jamais diffuser tel quel.`
-      );
-      e.target.value = "";
-    };
-  }
-
   // ------------------------------------------------------------------
   // Ajouter un nom au gazetteer
   // ------------------------------------------------------------------
@@ -668,7 +543,7 @@
       // interne qui sert à la fois de classe CSS et de préfixe de
       // pseudonyme (ex : [TEMOIN_1]) — le nom tel que tapé reste affiché
       // tel quel dans la colonne des entités.
-      category = newName.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      category = newName.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
         .replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
       if (!category) category = "PERSONNALISE";
       LABEL_NAMES[category] = newName;
@@ -677,12 +552,13 @@
     if (!val) return;
     gazetteer.add(val, category);
     // Sans ceci, le nom ajouté n'apparaissait nulle part tant qu'on ne
-    // recliquait pas manuellement sur "Détecter les entités" — on relance
-    // donc la détection immédiatement, comme pour les autres entités.
-    if (textArea.value.trim()) {
+    // recliquait pas manuellement sur "Redétecter" — on relance donc la
+    // détection immédiatement, comme pour les autres entités (uniquement
+    // pertinent en mode "Anonymiser").
+    if (mode === "anonymize" && textArea.value.trim()) {
       runDetection();
     } else {
-      alert(`« ${val} » ajouté (catégorie : ${LABEL_NAMES[category] || category}). Il sera pris en compte dès qu'un document sera chargé et que vous cliquerez sur « Détecter les entités ».`);
+      alert(`« ${val} » ajouté (catégorie : ${LABEL_NAMES[category] || category}). Il sera pris en compte dès qu'un document sera importé et détecté.`);
     }
   });
   $("gazetteerInput").addEventListener("keydown", (e) => {
@@ -697,6 +573,8 @@
   if (window.pdfjsLib) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
   }
+
+  setMode("anonymize");
 
   async function preloadOcrModel() {
     try {

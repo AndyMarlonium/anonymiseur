@@ -25,35 +25,50 @@
   ⏳ Chargement des bibliothèques et du modèle OCR (≈20 Mo — instantané en local, prend un instant en ligne la première visite)...
 </div>
 
-<nav class="tabs">
-  <button type="button" class="tab-btn active" data-tab="tab-anonymize">① Anonymiser un document</button>
-  <button type="button" class="tab-btn" data-tab="tab-restore">② Désanonymiser</button>
-</nav>
+<!-- ===================== PAGE UNIQUE : ANONYMISER / DÉSANONYMISER ===================== -->
+<section id="mainSection">
 
-<!-- ===================== ONGLET 1 : ANONYMISER ===================== -->
-<section id="tab-anonymize" class="tab-panel active">
+  <div class="mode-banner">
+    <h2 id="modeLabel" class="mode-label">Anonymiser</h2>
+    <p id="modeHint" class="mode-hint">
+      Importez un document : les informations personnelles (noms, dates, adresses…) sont repérées automatiquement.
+    </p>
+  </div>
 
-  <div class="steps-row">
+  <!-- Étapes du mode "Anonymiser" -->
+  <div class="steps-row" id="anonymizeSteps">
     <div class="step-card">
       <div class="step-num">Étape 1</div>
       <label class="file-btn">
-        Importer…
+        Importer et détecter les entités…
         <input type="file" id="fileInput" accept=".pdf,.docx,.txt" hidden>
       </label>
-      <p class="step-caption">PDF (scanné ou natif), Word (.docx) ou texte (.txt). Les entités (noms, dates, adresses…) sont repérées automatiquement dès l'import.</p>
+      <p class="step-caption">PDF (scanné ou natif), Word (.docx) ou texte (.txt).</p>
     </div>
     <div class="step-card">
       <div class="step-num">Étape 2</div>
-      <button type="button" id="btnAnonymize" disabled>Anonymiser</button>
-      <p class="step-caption">Remplacer les entités cochées par des pseudonymes.</p>
+      <button type="button" id="btnAnonymize" disabled>Anonymiser et copier</button>
+      <p class="step-caption">Copie le texte anonymisé dans le presse-papiers (prêt à coller dans une IA externe) et vide le champ.</p>
     </div>
+  </div>
+
+  <!-- Étapes du mode "Désanonymiser" -->
+  <div class="steps-row hidden" id="desanonymizeSteps">
     <div class="step-card">
       <div class="step-num">Étape 3</div>
+      <button type="button" id="btnDesanonymize" disabled>Désanonymiser</button>
+      <p class="step-caption">Collez ici (Ctrl+V) le texte renvoyé par l'IA, puis cliquez ici pour remettre les vraies données à la place des pseudonymes.</p>
+    </div>
+    <div class="step-card">
       <span class="step-buttons-row">
-        <button type="button" id="btnExportDocx" disabled>Enregistrer et télécharger (.docx)</button>
-        <button type="button" id="btnExport" disabled>Enregistrer et télécharger (.txt)</button>
+        <button type="button" id="btnExportDocx" disabled>Télécharger (.docx)</button>
+        <button type="button" id="btnExport" disabled>Télécharger (.txt)</button>
       </span>
-      <p class="step-caption">Un nom vous sera demandé une seule fois : le document est aussitôt gardé dans la bibliothèque de ce navigateur (onglet ② Désanonymiser) ET téléchargé.</p>
+      <p class="step-caption">Enregistrer le document final (désanonymisé) sur votre ordinateur.</p>
+    </div>
+    <div class="step-card">
+      <button type="button" id="btnNewDocument" class="secondary">↺ Nouveau document</button>
+      <p class="step-caption">Recommencer avec un autre document à anonymiser.</p>
     </div>
   </div>
 
@@ -65,60 +80,18 @@
 
   <div class="main-grid">
     <div class="text-col">
-      <div class="paste-row">
-        <label for="docLabel">Aperçu du document</label>
-        <button type="button" id="btnUsePasted">Enregistrer le texte collé ci-dessous</button>
-      </div>
-      <p class="hint">Vous pouvez aussi coller ou taper du texte directement ci-dessous (Ctrl+V), puis cliquer sur « Enregistrer le texte collé » pour l'utiliser comme document de travail.</p>
+      <label for="textArea" id="textAreaLabel">Aperçu du document</label>
+      <p class="hint" id="textAreaHint">Vous pouvez aussi coller ou taper le texte original directement ci-dessous (Ctrl+V), puis cliquer sur « ↻ Redétecter les entités ».</p>
       <div class="text-wrap">
         <div id="textBackdrop" class="text-backdrop" aria-hidden="true"></div>
         <textarea id="textArea" spellcheck="false" placeholder="Le texte du document apparaîtra ici après import (ou collez/tapez-le directement)…"></textarea>
       </div>
     </div>
-    <div class="entity-col">
+    <div class="entity-col" id="entityCol">
       <label>Entités détectées</label>
       <div id="entityList" class="entity-list"><p class="muted">(aucune)</p></div>
     </div>
   </div>
-</section>
-
-<!-- ===================== ONGLET 2 : RETROUVER ===================== -->
-<section id="tab-restore" class="tab-panel">
-  <p class="intro-bold">Retrouver les vraies données (noms, adresses…) d'un document déjà anonymisé et enregistré dans CE navigateur.</p>
-  <p class="intro-warn">⚠️ Le résultat n'est plus anonymisé — à ne jamais diffuser tel quel.</p>
-  <p class="intro-note">
-    ℹ️ Cette bibliothèque est propre à ce navigateur/cet ordinateur (stockage local,
-    <code>localStorage</code>) : elle n'est ni partagée entre testeurs, ni synchronisée
-    entre appareils, et elle est effacée si vous videz les données de navigation de ce site.
-  </p>
-
-  <p class="step-label">Étape 1 — Sélectionnez un document dans la liste :</p>
-  <table class="lib-table">
-    <thead><tr><th>Document</th><th>Enregistré le</th></tr></thead>
-    <tbody id="libraryTableBody"></tbody>
-  </table>
-  <p id="libraryStatus" class="muted"></p>
-
-  <p class="step-label">Étape 2 — Choisissez une action pour ce document :</p>
-  <div class="steps-row">
-    <div class="step-card">
-      <div class="step-num">Étape 2a</div>
-      <button type="button" id="btnLibRestore" disabled>Désanonymiser sans modifications</button>
-      <p class="step-caption">Réafficher le document avec les vraies données.</p>
-    </div>
-    <div class="step-card">
-      <div class="step-num">Étape 2b</div>
-      <button type="button" id="btnLibRestoreExternal">Désanonymiser fichier traité par IA</button>
-      <p class="step-caption">Appliquer les vraies données à un fichier retravaillé ailleurs (.txt ou .docx).</p>
-    </div>
-    <div class="step-card">
-      <div class="step-num">↻</div>
-      <button type="button" id="btnLibRefresh">Actualiser</button>
-      <p class="step-caption">Rafraîchir la liste.</p>
-    </div>
-  </div>
-
-  <input type="file" id="restoreFileInput" accept=".txt,.docx" hidden>
 </section>
 
 <!-- Boîte de dialogue "Ajouter un nom" -->
@@ -146,21 +119,6 @@
     <div class="modal-buttons">
       <button type="button" id="gazetteerCancel" class="secondary">Annuler</button>
       <button type="button" id="gazetteerOk">Ajouter</button>
-    </div>
-  </div>
-</div>
-
-<!-- Boîte de dialogue "Désanonymiser fichier traité par IA" -->
-<div id="restoreExternalModal" class="modal hidden">
-  <div class="modal-box">
-    <h3>Désanonymiser un fichier traité par IA</h3>
-    <p>
-      Choisissez tout d'abord le fichier d'<strong>ORIGINE</strong> dans la liste
-      proposée à l'étape 1 ci-dessous, avant la désanonymisation du fichier traité
-      par IA.
-    </p>
-    <div class="modal-buttons">
-      <button type="button" id="restoreExternalOk">OK</button>
     </div>
   </div>
 </div>
