@@ -118,6 +118,12 @@ body {
   grid-template-columns: 1fr 300px;
   gap: 14px;
 }
+/* En mode "Désanonymiser", la colonne des entités est masquée : on
+   n'utilise plus qu'une seule colonne pour que le champ de texte
+   occupe toute la largeur disponible, sans espace vide à droite. */
+.main-grid.single-col {
+  grid-template-columns: 1fr;
+}
 .paste-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .paste-row label { font-weight: bold; }
 .paste-row button { padding: 6px 10px; border: 1px solid #999; border-radius: 4px; background: #f0f0f0; cursor: pointer; font-size: 12px; }
@@ -184,17 +190,6 @@ body {
 .entity-row .lbl { font-weight: bold; color: #555; }
 .occ-count { color: var(--muted); font-size: 11px; }
 .muted { color: var(--muted); font-size: 12px; }
-
-.intro-bold { font-weight: bold; margin: 6px 0 2px; }
-.intro-warn { color: var(--danger); margin: 0 0 8px; }
-.intro-note { font-size: 12px; color: var(--muted); background: #eef2f8; border: 1px solid #cdd9ec; border-radius: 4px; padding: 8px; }
-.step-label { font-weight: bold; font-size: 13px; margin: 14px 0 6px; }
-
-.lib-table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); margin-bottom: 4px; }
-.lib-table th, .lib-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 13px; }
-.lib-table tbody tr { cursor: pointer; }
-.lib-table tbody tr:hover { background: #f3f6fb; }
-.lib-table tbody tr.selected { background: #dbe8ff; }
 
 .modal {
   position: fixed;

@@ -76,6 +76,7 @@
     $("anonymizeSteps").classList.toggle("hidden", !isAnonymize);
     $("desanonymizeSteps").classList.toggle("hidden", isAnonymize);
     $("entityCol").classList.toggle("hidden", !isAnonymize);
+    document.querySelector(".main-grid").classList.toggle("single-col", !isAnonymize);
     $("textAreaHint").classList.toggle("hidden", !isAnonymize);
     $("textAreaLabel").textContent = isAnonymize ? "Aperçu du document" : "Texte reçu de l'IA";
     textArea.placeholder = isAnonymize
@@ -575,6 +576,26 @@
   }
 
   setMode("anonymize");
+
+  // ------------------------------------------------------------------
+  // Pied de page — écrit par le script (pas en texte brut dans le HTML,
+  // encodé, et surveillé) pour qu'on ne puisse pas changer le nom en
+  // éditant simplement index.html ou en le modifiant dans l'inspecteur
+  // du navigateur : toute tentative de suppression/modification du
+  // contenu du pied de page est immédiatement rétablie.
+  // ------------------------------------------------------------------
+  (function protectFooterCredit() {
+    const footer = $("footer");
+    if (!footer) return;
+    const CREDIT = atob("QW5keSBNYXJsb25pdW0=");
+    const write = () => {
+      if (footer.textContent !== CREDIT) footer.textContent = CREDIT;
+    };
+    write();
+    new MutationObserver(write).observe(footer, {
+      childList: true, characterData: true, subtree: true,
+    });
+  })();
 
   async function preloadOcrModel() {
     try {
