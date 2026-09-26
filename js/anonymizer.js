@@ -120,6 +120,25 @@
     ["AVOCAT", String.raw`\b[Cc]onseil[ \t]+de[ \t]+(?<val>[${UPPER}][${WORD}'’\-]*(?:[ \t]+[${UPPER}][${WORD}'’\-]*){0,4})`],
     ["AVOCAT", String.raw`\b[Cc]abinet[ \t]+(?!d['’]Avocats)(?<val>[${UPPER}][${WORD}'’\-]*(?:[ \t]+[${UPPER}][${WORD}'’\-]*){0,4})`],
 
+    // Lieu/employeur de travail en malgache : "miasa ao amin'ny orinasa X",
+    // "miasa ao amin'ny X" (sans "orinasa"), ou "orinasa X" tout court.
+    // Règles les plus spécifiques d'abord (peu d'effet ici puisque toutes
+    // sont indépendantes, mais garde la lecture cohérente avec le reste).
+    ["ADRESSE", String.raw`\bmiasa[ \t]+ao[ \t]+amin['’]ny[ \t]+orinasa[ \t]+(?<val>[${UPPER}][${WORD}'’\-]*(?:[ \t]+[${UPPER}][${WORD}'’\-]*){0,4})`],
+    ["ADRESSE", String.raw`\bmiasa[ \t]+ao[ \t]+amin['’]ny[ \t]+(?<val>[${UPPER}][${WORD}'’\-]*(?:[ \t]+[${UPPER}][${WORD}'’\-]*){0,4})`],
+    ["ADRESSE", String.raw`\borinasa[ \t]+(?<val>[${UPPER}][${WORD}'’\-]*(?:[ \t]+[${UPPER}][${WORD}'’\-]*){0,4})`],
+
+    // Quartier introduit par "ao" tout court suivi d'un nom propre
+    // (majuscule). Volontairement PLUS restreint que "mipetraka ao" ou
+    // "miasa ao amin'ny" ci-dessus : "ao" seul est un mot bien trop
+    // courant en malgache ("dans", "là") pour servir de déclencheur sans
+    // condition — on exige donc que le mot suivant commence par une
+    // majuscule (signal d'un nom propre), ce qui exclut l'immense
+    // majorité des emplois grammaticaux ordinaires de "ao" ("ao anatiny",
+    // "ao izy"...). Le filtre "tous les mots sont dans STOPWORDS_TITLECASE"
+    // plus bas rattrape les faux positifs du genre "ao Fitsarana".
+    ["ADRESSE", String.raw`\bao[ \t]+(?<val>[${UPPER}][${LOWER}]+(?:[ \t]+[${UPPER}][${LOWER}]+){0,2})\b`],
+
     ["PERSONNE", String.raw`\b(?:[Ll]e[ \t]+requérant|[Ll]a[ \t]+requérante)[ \t,]*(?:M\.|Mme|Mlle)?[ \t]*(?<val>[${UPPER}][${WORD}'’\-]*(?:[ \t]+[${UPPER}][${WORD}'’\-]*){0,3})`],
 
     ["DATE", String.raw`\bn[ée]e?[ \t]+le[ \t]+(?<val>\d{1,2}[ \t]+(?:janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)[ \t]+\d{4}|\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})\b`],
@@ -134,6 +153,9 @@
     ["MATRICULE", String.raw`\bIM[ \t]*n?°?[ \t]*(?<val>\d{3,10})\b`],
 
     ["TELEPHONE", String.raw`\b(?<val>0[23]\d(?:[ .\-]?\d){7})\b`],
+    // Format international (+261), l'équivalent du numéro local sans le
+    // 0 de tête : ex "+261 34 174 4328" pour "034 17 44 328".
+    ["TELEPHONE", String.raw`(?<val>\+261[ .\-]?[23]\d(?:[ .\-]?\d){6,7})\b`],
 
     ["NUMERO", String.raw`\bn°\s?(?<val>[\w/\-]+)`],
 
@@ -159,7 +181,14 @@
   function buildEntityPatterns() {
     return ENTITY_PATTERNS.map(([label, pattern]) => {
       if (pattern === "__ALLCAPS_PLACEHOLDER__") {
-        pattern = String.raw`\b(?!(?:${excludeAllcapsAlternation()})\b)(?<val>[${UPPER}]{4,}(?:[ \t]+[${UPPER}]{4,})*(?:[ \t]+[${UPPER}][${LOWER}]+){1,2})\b`;
+        // Le nombre de prénoms accolés est augmenté à 4 (au lieu de 2) :
+        // les patronymes malgaches sont souvent suivis de plusieurs
+        // prénoms ("RAHARINATOANDRO Gérald Tony Hery"). Le filtre général
+        // sur STOPWORDS_TITLECASE plus bas protège contre l'effet de bord
+        // qu'on cherchait à éviter à l'origine (avaler une adresse/un nom
+        // de lieu accolé) : un mot institutionnel ou un nom de ville dans
+        // la séquence fait rejeter toute l'entité.
+        pattern = String.raw`\b(?!(?:${excludeAllcapsAlternation()})\b)(?<val>[${UPPER}]{4,}(?:[ \t]+[${UPPER}]{4,})*(?:[ \t]+[${UPPER}][${LOWER}]+){1,4})\b`;
       } else if (pattern === "__CITY_PLACEHOLDER__") {
         pattern = cityPattern();
       }
@@ -173,23 +202,34 @@
   // ---------------------------------------------------------------------
   class Gazetteer {
     constructor(names) {
-      this.entries = new Map(); // texte -> label
+      this.entries = new Map(); // texte -> { label, origin }
       if (names) names.forEach((n) => this.add(n));
     }
-    add(name, label = "PERSONNE") {
+    // origin "user" : ajouté explicitement (bouton "+ Ajouter un nom"),
+    // toujours prioritaire sur une règle automatique qui chevauche, même
+    // plus longue (choix délibéré de l'utilisateur).
+    // origin "auto" : ajouté par l'enrichissement automatique du
+    // patronyme seul dans Anonymizer.detect() ci-dessous, pour retrouver
+    // les mentions ultérieures du seul nom de famille sans prénom — ne
+    // doit PAS l'emporter sur une correspondance plus complète (nom +
+    // prénom(s)) trouvée au même endroit lors de la même détection.
+    add(name, label = "PERSONNE", origin = "user") {
       name = name.trim();
-      if (name) this.entries.set(name, label);
+      if (name) this.entries.set(name, { label, origin });
     }
     remove(name) {
       this.entries.delete(name.trim());
     }
     find(text) {
       const found = [];
-      for (const [name, label] of this.entries) {
+      for (const [name, entry] of this.entries) {
         const re = new RegExp(escapeRegex(name), "g");
         let m;
         while ((m = re.exec(text)) !== null) {
-          found.push({ start: m.index, end: m.index + name.length, label, text: name, source: "gazetteer" });
+          found.push({
+            start: m.index, end: m.index + name.length,
+            label: entry.label, text: name, source: "gazetteer", origin: entry.origin,
+          });
           if (m.index === re.lastIndex) re.lastIndex++;
         }
       }
@@ -236,20 +276,41 @@
     }
     regexFound = regexFound.filter((e) => !touchesStopword(e));
 
+    // Filtre plus large, pour toutes les étiquettes (y compris ADRESSE/
+    // VILLE) : rejette une entité si TOUS ses mots sont du vocabulaire
+    // administratif/institutionnel connu — ex : "ao Fitsarana" capté par
+    // la règle "ao <Quartier>" ci-dessus. Volontairement "tous les mots"
+    // et pas "au moins un" (contrairement au filtre précédent) : une
+    // vraie adresse contient presque toujours un nom de rue/lot en plus
+    // du nom de ville, donc ne serait jamais rejetée à tort par un
+    // critère aussi strict.
+    function isEntirelyStopwords(e) {
+      const words = e.text.split(/\s+/);
+      return words.length > 0 && words.every((tok) => STOPWORDS_TITLECASE.has(tok));
+    }
+    regexFound = regexFound.filter((e) => !isEntirelyStopwords(e));
+
     const gazetteerFound = gazetteer ? gazetteer.find(text) : [];
 
-    // Priorité absolue aux entrées du gazetteer (choix explicite de
-    // l'utilisateur, catégorie comprise) : toute correspondance automatique
-    // qui chevauche ne serait-ce que partiellement une entrée du gazetteer
-    // est écartée — même si elle est plus longue. Sans ça, une règle
+    // Priorité absolue aux entrées du gazetteer AJOUTÉES EXPLICITEMENT PAR
+    // L'UTILISATEUR (origin "user") : toute correspondance automatique qui
+    // chevauche ne serait-ce que partiellement une telle entrée est
+    // écartée — même si elle est plus longue. Sans ça, une règle
     // automatique plus large (ex : la séquence "deux mots à Casse-Titre qui
     // se suivent") pouvait avaler un mot ajouté manuellement et lui imposer
     // sa propre catégorie (typiquement PERSONNE) à la place de celle
     // choisie par l'utilisateur.
+    // Les entrées ajoutées automatiquement en interne (origin "auto" —
+    // patronyme seul mémorisé pour retrouver ses mentions ultérieures)
+    // n'ont volontairement PAS cette priorité : sinon, sur le passage même
+    // où le patronyme complet ("NOM Prénom") vient d'être détecté, la
+    // version courte tout juste ajoutée ("NOM" seul) l'emporterait à tort
+    // sur la correspondance complète trouvée au même endroit.
     function overlaps(a, b) {
       return a.start < b.end && b.start < a.end;
     }
-    regexFound = regexFound.filter((e) => !gazetteerFound.some((g) => overlaps(e, g)));
+    const userGazetteerFound = gazetteerFound.filter((g) => g.origin === "user");
+    regexFound = regexFound.filter((e) => !userGazetteerFound.some((g) => overlaps(e, g)));
 
     let found = regexFound.concat(gazetteerFound);
 
@@ -316,7 +377,7 @@
         if (e.label === "PERSONNE" && e.source === "regex" && e.text.includes(" ")) {
           const surname = extractLeadingSurname(e.text);
           if (surname && surname.length >= 4 && !this.gazetteer.entries.has(surname)) {
-            this.gazetteer.add(surname, "PERSONNE");
+            this.gazetteer.add(surname, "PERSONNE", "auto");
             added = true;
           }
         }

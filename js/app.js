@@ -76,6 +76,11 @@
     ocrWorker = await Tesseract.createWorker(["mlg_archives_v2", "fra"], 1, {
       langPath: "tessdata",
       gzip: false,
+      // Sans ceci, tesseract.js va chercher son worker et son "coeur" WASM
+      // sur un CDN par défaut — on les fait pointer vers les copies
+      // locales (vendor/) pour un fonctionnement 100% hors-ligne.
+      workerPath: "vendor/tesseract/worker.min.js",
+      corePath: "vendor/tesseract/core",
       logger: (m) => {
         if (m.status === "recognizing text") {
           ocrProgress.textContent = `Reconnaissance en cours… ${Math.round(m.progress * 100)}%`;
@@ -164,6 +169,20 @@
     }
     resetWorkflowAfterNewDocument();
     commitWorkingText();
+    // Enregistré directement dans la bibliothèque de ce navigateur (même
+    // bibliothèque que l'onglet ② Désanonymiser), sans boîte de dialogue
+    // "Enregistrer sous" ni téléchargement — un seul clic, sans interruption.
+    const lib = loadLibrary();
+    lib.push({
+      id: Date.now().toString(36),
+      name: "Texte collé " + new Date().toLocaleString("fr-FR"),
+      date: new Date().toISOString(),
+      originalText: textArea.value,
+      anonymizedText: textArea.value,
+      mapping: [],
+    });
+    saveLibrary(lib);
+    alert("Le fichier est bien enregistré, continuer à l'étape 2 (bouton Détecter les entités) pour la suite...");
   });
 
   function resetWorkflowAfterNewDocument() {
@@ -181,6 +200,7 @@
     $("btnDetect").disabled = !detect;
     $("btnAnonymize").disabled = !anonymize;
     $("btnExport").disabled = !exportBtn;
+    $("btnExportDocx").disabled = !exportBtn;
     $("btnSaveLibrary").disabled = !save;
   }
 
@@ -213,7 +233,13 @@
     let cursor = 0;
     for (const e of sorted) {
       html += escapeHtml(text.slice(cursor, e.start));
-      html += `<mark class="${e.label}" style="${colorForLabel(e.label) ? `background:${colorForLabel(e.label)}` : ""}">${escapeHtml(text.slice(e.start, e.end))}</mark>`;
+      if (e.checked) {
+        html += `<mark class="${e.label}" style="${colorForLabel(e.label) ? `background:${colorForLabel(e.label)}` : ""}">${escapeHtml(text.slice(e.start, e.end))}</mark>`;
+      } else {
+        // Décochée : affichée en clair, sans surlignage, comme un aperçu
+        // immédiat de ce qui resterait visible si on anonymisait maintenant.
+        html += escapeHtml(text.slice(e.start, e.end));
+      }
       cursor = e.end;
     }
     html += escapeHtml(text.slice(cursor));
@@ -246,23 +272,46 @@
       renderHighlight();
       return;
     }
+    // Regroupe les occurrences identiques (même texte + même catégorie) :
+    // une seule case à cocher, qui s'applique à TOUTES les occurrences de
+    // ce texte dans le document — pas seulement à la première trouvée.
+    const groups = new Map(); // "label::texte" -> { label, text, indices: [...], checked }
     currentEntities.forEach((e, idx) => {
+      const key = `${e.label}::${e.text}`;
+      if (!groups.has(key)) {
+        groups.set(key, { label: e.label, text: e.text, indices: [], checked: e.checked });
+      }
+      groups.get(key).indices.push(idx);
+    });
+
+    for (const group of groups.values()) {
       const row = document.createElement("div");
       row.className = "entity-row";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = e.checked;
-      cb.addEventListener("change", () => { currentEntities[idx].checked = cb.checked; });
+      cb.checked = group.checked;
+      cb.addEventListener("change", () => {
+        // Applique le même état coché/décoché à TOUTES les occurrences
+        // de ce groupe (même texte + même catégorie) d'un coup.
+        for (const idx of group.indices) currentEntities[idx].checked = cb.checked;
+        // Décocher retire immédiatement le surlignage de CHAQUE
+        // occurrence dans l'aperçu (elles ne seront pas anonymisées) —
+        // recocher les remet toutes.
+        renderHighlight();
+      });
       const swatch = document.createElement("span");
       swatch.className = "swatch";
-      swatch.style.background = colorForLabel(e.label) || `var(--entity-${e.label.toLowerCase()}, #ccc)`;
+      swatch.style.background = colorForLabel(group.label) || `var(--entity-${group.label.toLowerCase()}, #ccc)`;
       const label = document.createElement("span");
-      label.innerHTML = `<span class="lbl">[${escapeHtml(displayNameForLabel(e.label))}]</span> ${escapeHtml(e.text)}`;
+      const countBadge = group.indices.length > 1
+        ? ` <span class="occ-count">(${group.indices.length}×)</span>`
+        : "";
+      label.innerHTML = `<span class="lbl">[${escapeHtml(displayNameForLabel(group.label))}]</span> ${escapeHtml(group.text)}${countBadge}`;
       row.appendChild(cb);
       row.appendChild(swatch);
       row.appendChild(label);
       entityList.appendChild(row);
-    });
+    }
     renderHighlight();
   }
 
@@ -275,6 +324,10 @@
   // ------------------------------------------------------------------
   let lastAnonymizedText = "";
   let lastOriginalText = "";
+  // Nom donné par l'utilisateur au moment d'"Enregistrer" (étape 4) —
+  // réutilisé comme suggestion pour le téléchargement (étape 5), avec
+  // "-anonymisé" ajouté à la fin.
+  let lastSavedDocName = "";
 
   $("btnAnonymize").addEventListener("click", () => {
     const text = textArea.value;
@@ -285,34 +338,23 @@
     textArea.value = result;
     currentEntities = [];
     renderEntities();
-    setStepState({ detect: true, anonymize: false, exportBtn: true, save: true });
+    // "Télécharger" (étape 5) reste grisé tant que "Enregistrer" (étape 4)
+    // n'a pas été fait : voir plus bas, il se débloque une fois un nom
+    // donné, pour que le fichier téléchargé ait toujours un nom suggéré
+    // pertinent plutôt qu'un "document-anonymisé.txt" générique.
+    setStepState({ detect: true, anonymize: false, exportBtn: false, save: true });
   });
 
   // ------------------------------------------------------------------
-  // Étape 4 — Télécharger
-  // ------------------------------------------------------------------
-  $("btnExport").addEventListener("click", () => {
-    downloadTextFile(textArea.value, "document_anonymise.txt");
-  });
-
-  function downloadTextFile(content, filename) {
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  // ------------------------------------------------------------------
-  // Étape 5 — Enregistrer dans la bibliothèque (localStorage)
+  // Étape 4 — Enregistrer dans la bibliothèque (localStorage)
   // ------------------------------------------------------------------
   $("btnSaveLibrary").addEventListener("click", () => {
-    const name = prompt("Nom pour retrouver ce document dans la bibliothèque :", "Document " + new Date().toLocaleString("fr-FR"));
+    const name = prompt(
+      "Nom du fichier original, pour le repérer facilement dans l'onglet ② Désanonymiser :",
+      "Document " + new Date().toLocaleString("fr-FR")
+    );
     if (!name) return;
+    lastSavedDocName = name;
     const lib = loadLibrary();
     lib.push({
       id: Date.now().toString(36),
@@ -323,8 +365,120 @@
       mapping: anonymizer.mappingAsPairs(),
     });
     saveLibrary(lib);
+    // Débloque "Télécharger" (étape 5) maintenant qu'un nom a été donné.
+    $("btnExport").disabled = false;
+    $("btnExportDocx").disabled = false;
     alert("Document enregistré dans la bibliothèque de ce navigateur.");
   });
+
+  function downloadBlobAsFile(content, filename, mimeType) {
+    const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadTextFile(content, filename) {
+    downloadBlobAsFile(content, filename, "text/plain;charset=utf-8");
+  }
+
+  // ------------------------------------------------------------------
+  // Étape 5 — Télécharger : l'utilisateur choisit l'emplacement, avec un
+  // nom suggéré basé sur celui donné à l'étape 4 ("<nom>-anonymisé.txt" ou
+  // ".docx"). Repose sur la File System Access API (Chrome/Edge) pour un
+  // vrai choix d'emplacement ; sur les navigateurs qui ne la supportent
+  // pas (Firefox, Safari), on retombe sur un téléchargement classique
+  // avec le même nom suggéré, dans le dossier de téléchargement par défaut.
+  // ------------------------------------------------------------------
+  async function saveAsFile(content, suggestedName, mimeType, extension) {
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{ description: "Fichier", accept: { [mimeType]: [extension] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        return;
+      } catch (err) {
+        if (err && err.name === "AbortError") return; // l'utilisateur a annulé
+        console.error(err);
+        // Repli sur le téléchargement classique si l'API a échoué pour
+        // une autre raison.
+      }
+    }
+    downloadBlobAsFile(content, suggestedName, mimeType);
+  }
+
+  $("btnExport").addEventListener("click", async () => {
+    const base = (lastSavedDocName || "document").trim();
+    await saveAsFile(textArea.value, `${base}-anonymisé.txt`, "text/plain;charset=utf-8", ".txt");
+  });
+
+  $("btnExportDocx").addEventListener("click", async () => {
+    const base = (lastSavedDocName || "document").trim();
+    try {
+      const blob = await buildDocx(textArea.value);
+      await saveAsFile(
+        blob, `${base}-anonymisé.docx`,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Erreur pendant la création du .docx : " + err.message + " (voir la console, F12, pour le détail).");
+    }
+  });
+
+  function escapeXml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Construit un .docx minimal mais valide (un paragraphe par ligne du
+  // texte) — suffisant pour du texte brut, sans mise en forme à
+  // conserver. Pas de bibliothèque dédiée à l'écriture de .docx dans ce
+  // projet (mammoth.js, déjà présent, ne sait que LIRE des .docx) : on
+  // construit directement le paquet OOXML minimal avec JSZip.
+  async function buildDocx(text) {
+    const paragraphs = text.split("\n").map((line) => {
+      const escaped = escapeXml(line);
+      return escaped ? `<w:p><w:r><w:t xml:space="preserve">${escaped}</w:t></w:r></w:p>` : "<w:p/>";
+    }).join("");
+
+    const documentXml =
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+      `<w:body>${paragraphs}<w:sectPr/></w:body></w:document>`;
+
+    const contentTypesXml =
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+      `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+      `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+      `<Default Extension="xml" ContentType="application/xml"/>` +
+      `<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
+      `</Types>`;
+
+    const relsXml =
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
+      `</Relationships>`;
+
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", contentTypesXml);
+    zip.folder("_rels").file(".rels", relsXml);
+    zip.folder("word").file("document.xml", documentXml);
+
+    return zip.generateAsync({
+      type: "blob",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+  }
 
   function loadLibrary() {
     try {
@@ -341,6 +495,11 @@
   // Onglet ② — Retrouver un document original
   // ------------------------------------------------------------------
   let selectedLibraryId = null;
+  // Armé par le OK de la boîte "Désanonymiser un fichier traité par IA" :
+  // le PROCHAIN clic sur une ligne de la liste ci-dessous ouvre alors
+  // directement le sélecteur de fichier pour ce document, sans étape
+  // intermédiaire.
+  let awaitingRestoreFileSelection = false;
 
   function refreshLibraryTable() {
     const lib = loadLibrary();
@@ -348,11 +507,10 @@
     tbody.innerHTML = "";
     selectedLibraryId = null;
     $("btnLibRestore").disabled = true;
-    // btnLibRestoreExternal reste volontairement toujours actif : il sert
-    // à désanonymiser un fichier externe (retravaillé par une IA ailleurs),
-    // pas nécessairement lié à une sélection dans ce tableau — voir son
-    // gestionnaire de clic, qui demande de choisir un document seulement
-    // s'il n'y en a aucun de sélectionné au moment du clic.
+    // btnLibRestoreExternal reste volontairement toujours actif : il
+    // affiche d'abord une explication (boîte de dialogue), puis attend
+    // le prochain clic sur une ligne de cette liste pour ouvrir le
+    // sélecteur de fichier — voir awaitingRestoreFileSelection plus bas.
     if (!lib.length) {
       $("libraryStatus").textContent = "Aucun document enregistré pour l'instant.";
       return;
@@ -368,6 +526,10 @@
         tr.classList.add("selected");
         selectedLibraryId = doc.id;
         $("btnLibRestore").disabled = false;
+        if (awaitingRestoreFileSelection) {
+          awaitingRestoreFileSelection = false;
+          openExternalRestorePicker(doc);
+        }
       });
       tbody.appendChild(tr);
     });
@@ -393,25 +555,32 @@
   });
 
   $("btnLibRestoreExternal").addEventListener("click", () => {
-    const lib = loadLibrary();
-    const doc = lib.find((d) => d.id === selectedLibraryId);
-    if (!doc) {
-      alert("Sélectionnez d'abord, dans la liste ci-dessus, le document dont vous voulez utiliser la table de correspondance.");
-      return;
-    }
+    // Affiche une explication dans une boîte de dialogue "maison" (pas
+    // une fenêtre système bloquante, pour ne pas risquer de perdre le
+    // geste utilisateur nécessaire à l'ouverture du sélecteur de fichier
+    // plus tard). Un seul bouton OK : ça arme l'attente d'un choix dans
+    // la liste ci-dessous (étape 1) — voir awaitingRestoreFileSelection.
+    $("restoreExternalModal").classList.remove("hidden");
+  });
+
+  $("restoreExternalOk").addEventListener("click", () => {
+    $("restoreExternalModal").classList.add("hidden");
+    awaitingRestoreFileSelection = true;
+  });
+
+  // Une fois armée par le OK ci-dessus, le PROCHAIN clic sur une ligne de
+  // la liste (étape 1, géré dans refreshLibraryTable) ouvre directement
+  // le sélecteur de fichier pour ce document — voir openExternalRestorePicker.
+  async function openExternalRestorePicker(doc) {
     if (!doc.mapping || !doc.mapping.length) {
       alert("Aucune table de correspondance trouvée pour ce document.");
       return;
     }
-    // Pas de confirm() ici avant d'ouvrir le sélecteur de fichier : sur
-    // certains navigateurs, une boîte de dialogue bloquante intercalée
-    // peut empêcher le clic programmatique suivant sur l'input fichier de
-    // fonctionner (perte du geste utilisateur). L'avertissement reste
-    // affiché, mais après coup, dans le message final.
     $("restoreFileInput").click();
     $("restoreFileInput").onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+
       let modifiedText;
       try {
         modifiedText = file.name.toLowerCase().endsWith(".docx")
@@ -435,7 +604,7 @@
       );
       e.target.value = "";
     };
-  });
+  }
 
   // ------------------------------------------------------------------
   // Ajouter un nom au gazetteer
@@ -494,8 +663,7 @@
   // premier PDF importé n'attende pas le téléchargement du modèle.
   // ------------------------------------------------------------------
   if (window.pdfjsLib) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdfjs/pdf.worker.min.js";
   }
 
   async function preloadOcrModel() {

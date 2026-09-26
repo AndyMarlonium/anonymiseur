@@ -9,20 +9,25 @@
 <body>
 
 <header class="topbar">
-  <h1>Anonymiseur de décisions de justice — version test navigateur</h1>
-  <p class="subtitle">
-    Fonctionne entièrement dans ce navigateur (OCR, détection, anonymisation) —
-    rien n'est envoyé à un serveur. Modèle OCR : <code>mlg_archives_v2+fra</code>.
-  </p>
+  <div class="topbar-inner">
+    <img src="img/logo.jpeg" alt="Filankevi-Panjakana — Conseil d'État de Madagascar" class="topbar-logo">
+    <div>
+      <h1>Anonymiseur de décisions de justice — version test navigateur</h1>
+      <p class="subtitle">
+        Fonctionne entièrement dans ce navigateur (OCR, détection, anonymisation) —
+        rien n'est envoyé à un serveur. Modèle OCR : <code>mlg_archives_v2+fra</code>.
+      </p>
+    </div>
+  </div>
 </header>
 
 <div class="banner-warning" id="firstLoadBanner">
-  ⏳ Chargement des bibliothèques et du modèle OCR (≈5 Mo) — un instant, surtout sur la première visite...
+  ⏳ Chargement des bibliothèques et du modèle OCR (≈20 Mo — instantané en local, prend un instant en ligne la première visite)...
 </div>
 
 <nav class="tabs">
   <button type="button" class="tab-btn active" data-tab="tab-anonymize">① Anonymiser un document</button>
-  <button type="button" class="tab-btn" data-tab="tab-restore">② Retrouver un document original</button>
+  <button type="button" class="tab-btn" data-tab="tab-restore">② Désanonymiser</button>
 </nav>
 
 <!-- ===================== ONGLET 1 : ANONYMISER ===================== -->
@@ -49,13 +54,16 @@
     </div>
     <div class="step-card">
       <div class="step-num">Étape 4</div>
-      <button type="button" id="btnExport" disabled>Télécharger (.txt)</button>
-      <p class="step-caption">Enregistrer le résultat anonymisé dans un fichier.</p>
+      <button type="button" id="btnSaveLibrary" disabled>Enregistrer</button>
+      <p class="step-caption">Nommer et garder une trace dans CE navigateur, pour retrouver ce document facilement dans l'onglet ② Désanonymiser.</p>
     </div>
     <div class="step-card">
       <div class="step-num">Étape 5</div>
-      <button type="button" id="btnSaveLibrary" disabled>Enregistrer</button>
-      <p class="step-caption">Optionnel : garder une trace dans CE navigateur pour pouvoir retrouver les données d'origine plus tard (onglet ②).</p>
+      <span class="step-buttons-row">
+        <button type="button" id="btnExportDocx" disabled>Télécharger (.docx)</button>
+        <button type="button" id="btnExport" disabled>Télécharger (.txt)</button>
+      </span>
+      <p class="step-caption">Choisir où enregistrer le résultat anonymisé sur votre ordinateur.</p>
     </div>
   </div>
 
@@ -151,12 +159,29 @@
   </div>
 </div>
 
+<!-- Boîte de dialogue "Désanonymiser fichier traité par IA" -->
+<div id="restoreExternalModal" class="modal hidden">
+  <div class="modal-box">
+    <h3>Désanonymiser un fichier traité par IA</h3>
+    <p>
+      Choisissez tout d'abord le fichier d'<strong>ORIGINE</strong> dans la liste
+      proposée à l'étape 1 ci-dessous, avant la désanonymisation du fichier traité
+      par IA.
+    </p>
+    <div class="modal-buttons">
+      <button type="button" id="restoreExternalOk">OK</button>
+    </div>
+  </div>
+</div>
+
 <footer class="footer">Anonymiseur — version de test web, hors ligne après premier chargement.</footer>
 
-<!-- Bibliothèques tierces (CDN) -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.7.2/mammoth.browser.min.js"></script>
+<!-- Bibliothèques tierces — vendues en local (vendor/), plus aucune
+     dépendance internet après le premier téléchargement de ce dossier. -->
+<script src="vendor/pdfjs/pdf.min.js"></script>
+<script src="vendor/tesseract/tesseract.min.js"></script>
+<script src="vendor/mammoth/mammoth.browser.min.js"></script>
+<script src="vendor/jszip/jszip.min.js"></script>
 
 <!-- Code du projet -->
 <script src="js/anonymizer.js"></script>
