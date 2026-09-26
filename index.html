@@ -40,35 +40,26 @@
         Importer…
         <input type="file" id="fileInput" accept=".pdf,.docx,.txt" hidden>
       </label>
-      <p class="step-caption">PDF (scanné ou natif), Word (.docx) ou texte (.txt).</p>
+      <p class="step-caption">PDF (scanné ou natif), Word (.docx) ou texte (.txt). Les entités (noms, dates, adresses…) sont repérées automatiquement dès l'import.</p>
     </div>
     <div class="step-card">
       <div class="step-num">Étape 2</div>
-      <button type="button" id="btnDetect" disabled>Détecter les entités</button>
-      <p class="step-caption">Repérer noms, dates, montants, adresses…</p>
-    </div>
-    <div class="step-card">
-      <div class="step-num">Étape 3</div>
       <button type="button" id="btnAnonymize" disabled>Anonymiser</button>
       <p class="step-caption">Remplacer les entités cochées par des pseudonymes.</p>
     </div>
     <div class="step-card">
-      <div class="step-num">Étape 4</div>
-      <button type="button" id="btnSaveLibrary" disabled>Enregistrer</button>
-      <p class="step-caption">Nommer et garder une trace dans CE navigateur, pour retrouver ce document facilement dans l'onglet ② Désanonymiser.</p>
-    </div>
-    <div class="step-card">
-      <div class="step-num">Étape 5</div>
+      <div class="step-num">Étape 3</div>
       <span class="step-buttons-row">
-        <button type="button" id="btnExportDocx" disabled>Télécharger (.docx)</button>
-        <button type="button" id="btnExport" disabled>Télécharger (.txt)</button>
+        <button type="button" id="btnExportDocx" disabled>Enregistrer et télécharger (.docx)</button>
+        <button type="button" id="btnExport" disabled>Enregistrer et télécharger (.txt)</button>
       </span>
-      <p class="step-caption">Choisir où enregistrer le résultat anonymisé sur votre ordinateur.</p>
+      <p class="step-caption">Un nom vous sera demandé une seule fois : le document est aussitôt gardé dans la bibliothèque de ce navigateur (onglet ② Désanonymiser) ET téléchargé.</p>
     </div>
   </div>
 
   <div class="secondary-row">
     <button type="button" id="btnAddGazetteer" class="link-btn">+ Ajouter un nom à repérer (optionnel)</button>
+    <button type="button" id="btnDetect" class="link-btn" disabled>↻ Redétecter les entités (si vous avez modifié le texte)</button>
     <span id="ocrProgress" class="ocr-progress"></span>
   </div>
 

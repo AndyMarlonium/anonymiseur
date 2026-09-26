@@ -151,6 +151,10 @@
       }
       textArea.value = text;
       commitWorkingText();
+      // La détection des entités se lance désormais automatiquement dès
+      // l'import — l'utilisateur n'a plus besoin de cliquer sur un bouton
+      // séparé "Détecter les entités" avant de pouvoir anonymiser.
+      runDetection();
     } catch (err) {
       console.error(err);
       alert("Erreur pendant l'import : " + err.message + "\n(voir la console du navigateur, F12, pour le détail complet)");
@@ -182,30 +186,37 @@
       mapping: [],
     });
     saveLibrary(lib);
-    alert("Le fichier est bien enregistré, continuer à l'étape 2 (bouton Détecter les entités) pour la suite...");
+    // Idem que pour un import de fichier : détection automatique, pour
+    // enchaîner directement sur "Anonymiser" sans étape supplémentaire.
+    runDetection();
+    alert("Le texte est bien enregistré, vous pouvez continuer directement à l'étape « Anonymiser ».");
   });
 
   function resetWorkflowAfterNewDocument() {
     anonymizer = new AnonymizerLib.Anonymizer(gazetteer);
     currentEntities = [];
+    currentDocSaved = false;
     renderEntities();
-    setStepState({ detect: false, anonymize: false, exportBtn: false, save: false });
+    setStepState({ detect: false, anonymize: false, exportBtn: false });
   }
 
   function commitWorkingText() {
-    setStepState({ detect: true, anonymize: false, exportBtn: false, save: false });
+    setStepState({ detect: true, anonymize: false, exportBtn: false });
   }
 
-  function setStepState({ detect, anonymize, exportBtn, save }) {
+  function setStepState({ detect, anonymize, exportBtn }) {
+    // "detect" sert désormais uniquement au bouton secondaire "Redétecter"
+    // (la détection initiale se déclenche automatiquement après import).
     $("btnDetect").disabled = !detect;
     $("btnAnonymize").disabled = !anonymize;
     $("btnExport").disabled = !exportBtn;
     $("btnExportDocx").disabled = !exportBtn;
-    $("btnSaveLibrary").disabled = !save;
   }
 
   // ------------------------------------------------------------------
-  // Étape 2 — Détecter les entités
+  // Détection des entités — automatique dès qu'un document est chargé
+  // (import ou texte collé) ; le bouton "Redétecter" permet de relancer
+  // manuellement après une modification du texte.
   // ------------------------------------------------------------------
   function runDetection() {
     const text = textArea.value;
@@ -213,7 +224,7 @@
     const entities = anonymizer.detect(text);
     currentEntities = entities.map((e) => ({ ...e, checked: true }));
     renderEntities();
-    setStepState({ detect: true, anonymize: currentEntities.length > 0, exportBtn: false, save: false });
+    setStepState({ detect: true, anonymize: currentEntities.length > 0, exportBtn: false });
   }
   $("btnDetect").addEventListener("click", runDetection);
 
@@ -324,10 +335,15 @@
   // ------------------------------------------------------------------
   let lastAnonymizedText = "";
   let lastOriginalText = "";
-  // Nom donné par l'utilisateur au moment d'"Enregistrer" (étape 4) —
-  // réutilisé comme suggestion pour le téléchargement (étape 5), avec
+  // Nom donné par l'utilisateur au moment d'"Enregistrer et télécharger" —
+  // réutilisé comme suggestion pour le nom du fichier téléchargé, avec
   // "-anonymisé" ajouté à la fin.
   let lastSavedDocName = "";
+  // Devient vrai dès qu'une entrée a été créée dans la bibliothèque pour le
+  // texte anonymisé courant — évite de redemander le nom et de dupliquer
+  // l'entrée si l'utilisateur clique successivement sur .docx PUIS .txt
+  // (ou l'inverse) pour le même document.
+  let currentDocSaved = false;
 
   $("btnAnonymize").addEventListener("click", () => {
     const text = textArea.value;
@@ -337,23 +353,26 @@
     lastAnonymizedText = result;
     textArea.value = result;
     currentEntities = [];
+    currentDocSaved = false;
     renderEntities();
-    // "Télécharger" (étape 5) reste grisé tant que "Enregistrer" (étape 4)
-    // n'a pas été fait : voir plus bas, il se débloque une fois un nom
-    // donné, pour que le fichier téléchargé ait toujours un nom suggéré
-    // pertinent plutôt qu'un "document-anonymisé.txt" générique.
-    setStepState({ detect: true, anonymize: false, exportBtn: false, save: true });
+    // "Enregistrer et télécharger" (étape 3) se débloque directement — le
+    // nom ne sera demandé qu'une fois, au premier clic sur l'un des deux
+    // boutons (.docx ou .txt).
+    setStepState({ detect: true, anonymize: false, exportBtn: true });
   });
 
   // ------------------------------------------------------------------
-  // Étape 4 — Enregistrer dans la bibliothèque (localStorage)
+  // Étape 3 — Enregistrer (bibliothèque locale) ET télécharger, en une
+  // seule action : le nom n'est demandé qu'une fois, quel que soit le
+  // bouton (.docx / .txt) cliqué en premier.
   // ------------------------------------------------------------------
-  $("btnSaveLibrary").addEventListener("click", () => {
+  async function ensureSavedToLibrary() {
+    if (currentDocSaved) return true;
     const name = prompt(
-      "Nom du fichier original, pour le repérer facilement dans l'onglet ② Désanonymiser :",
+      "Nom du document, pour le retrouver facilement dans l'onglet ② Désanonymiser :",
       "Document " + new Date().toLocaleString("fr-FR")
     );
-    if (!name) return;
+    if (!name) return false;
     lastSavedDocName = name;
     const lib = loadLibrary();
     lib.push({
@@ -365,11 +384,9 @@
       mapping: anonymizer.mappingAsPairs(),
     });
     saveLibrary(lib);
-    // Débloque "Télécharger" (étape 5) maintenant qu'un nom a été donné.
-    $("btnExport").disabled = false;
-    $("btnExportDocx").disabled = false;
-    alert("Document enregistré dans la bibliothèque de ce navigateur.");
-  });
+    currentDocSaved = true;
+    return true;
+  }
 
   function downloadBlobAsFile(content, filename, mimeType) {
     const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
@@ -417,11 +434,13 @@
   }
 
   $("btnExport").addEventListener("click", async () => {
+    if (!(await ensureSavedToLibrary())) return;
     const base = (lastSavedDocName || "document").trim();
     await saveAsFile(textArea.value, `${base}-anonymisé.txt`, "text/plain;charset=utf-8", ".txt");
   });
 
   $("btnExportDocx").addEventListener("click", async () => {
+    if (!(await ensureSavedToLibrary())) return;
     const base = (lastSavedDocName || "document").trim();
     try {
       const blob = await buildDocx(textArea.value);
@@ -550,7 +569,14 @@
     document.querySelector('[data-tab="tab-anonymize"]').click();
     resetWorkflowAfterNewDocument();
     commitWorkingText();
-    setStepState({ detect: true, anonymize: false, exportBtn: true, save: false });
+    lastOriginalText = doc.originalText;
+    lastAnonymizedText = doc.originalText;
+    lastSavedDocName = doc.name + " (restauré)";
+    // Un document restauré (vraies données) ne doit pas être réenregistré
+    // dans la bibliothèque des documents anonymisés — seul le
+    // téléchargement direct est proposé ici.
+    currentDocSaved = true;
+    setStepState({ detect: true, anonymize: false, exportBtn: true });
     alert("⚠️ Version restaurée affichée dans l'onglet ① — ne pas diffuser tel quel.");
   });
 
@@ -597,7 +623,13 @@
       document.querySelector('[data-tab="tab-anonymize"]').click();
       resetWorkflowAfterNewDocument();
       commitWorkingText();
-      setStepState({ detect: true, anonymize: false, exportBtn: true, save: false });
+      lastOriginalText = restored;
+      lastAnonymizedText = restored;
+      lastSavedDocName = doc.name + " (restauré)";
+      // Idem : pas de réenregistrement dans la bibliothèque pour un
+      // document avec les vraies données restaurées.
+      currentDocSaved = true;
+      setStepState({ detect: true, anonymize: false, exportBtn: true });
       alert(
         `⚠️ Noms restaurés dans "${file.name}" — ${count} correspondance(s) appliquée(s) sur ` +
         `${doc.mapping.length} possibles.\n\nLe résultat affiché n'est plus anonymisé — à ne jamais diffuser tel quel.`
